@@ -1,0 +1,27 @@
+{
+  "name": "momently-stage1-server",
+  "version": "1.0.0",
+  "description": "Momently Stage 1 backend — Express API serving the plain HTML/CSS/JS frontend. Handles auth (email/password + Google OAuth), the template catalog, orders, private media uploads, Razorpay payments, admin operations, and outbound email.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node scripts/seed-templates.js",
+    "create-admin": "node scripts/create-admin.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cookie-parser": "^1.4.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.1",
+    "nodemailer": "^9.0.5",
+    "razorpay": "^2.9.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
