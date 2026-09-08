@@ -93,6 +93,27 @@ router.patch("/:id", requireCustomer, (req, res) => {
   res.json({ order: toPublicOrder(db.prepare("SELECT * FROM orders WHERE id = ?").get(order.id)) });
 });
 
+// GET /api/orders — the current customer's own orders, most recent first.
+// Powers profile.html.
+router.get("/", requireCustomer, (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT orders.*, templates.name AS template_name, templates.slug AS template_slug, templates.accent AS accent
+       FROM orders JOIN templates ON templates.id = orders.template_id
+       WHERE orders.user_id = ?
+       ORDER BY orders.created_at DESC`
+    )
+    .all(req.user.id);
+
+  res.json({
+    orders: rows.map((row) => ({
+      ...toPublicOrder(row),
+      templateName: row.template_name,
+      templateSlug: row.template_slug,
+      accent: row.accent,
+    })),
+  });
+});
 // POST /api/orders/:id/media — multipart upload, up to 10 files at once
 router.post("/:id/media", requireCustomer, upload.array("files", 10), (req, res) => {
   const order = loadOwnedOrder(req, res);
