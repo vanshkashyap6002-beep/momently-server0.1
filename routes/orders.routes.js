@@ -7,12 +7,26 @@ const storage = require("../lib/storage");
 
 const router = express.Router();
 
-const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime", "video/webm"]);
+const ALLOWED_MIME = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+]);
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024, files: 10 },
+  limits: {
+    fileSize: 100 * 1024 * 1024,
+    files: 10,
+  },
   fileFilter(_req, file, cb) {
-    if (!ALLOWED_MIME.has(file.mimetype)) return cb(new Error("Unsupported file type."));
+    if (!ALLOWED_MIME.has(file.mimetype)) {
+      return cb(new Error("Unsupported file type."));
+    }
+
     cb(null, true);
   },
 });
@@ -33,131 +47,433 @@ function toPublicOrder(row) {
   };
 }
 
-/** Loads the order and 404/403s if it doesn't belong to req.user. Used by
- * every route below so ownership is checked in exactly one place. */
-function loadOwnedOrder(req, res) {
-  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(req.params.id);
+/**
+ * Loads the order and checks that it belongs to the logged-in customer.
+ */
+async function loadOwnedOrder(req, res) {
+  const result = await db.query(
+    "SELECT * FROM orders WHERE id = $1",
+    [req.params.id]
+  );
+
+  const order = result.rows[0];
+
   if (!order || order.user_id !== req.user.id) {
-    res.status(404).json({ error: "Order not found." });
+    res.status(404).json({
+      error: "Order not found.",
+    });
+
     return null;
   }
+
   return order;
 }
 
-// POST /api/orders  { templateSlug } — starts (or reuses) a draft order.
-router.post("/", requireCustomer, (req, res) => {
-  const { templateSlug } = req.body || {};
-  const template = db.prepare("SELECT * FROM templates WHERE slug = ? AND is_enabled = 1").get(templateSlug);
-  if (!template) return res.status(404).json({ error: "That template isn't available." });
 
-  // Reuse an existing PENDING draft for this user+template instead of piling up duplicates.
-  const existing = db
-    .prepare("SELECT * FROM orders WHERE user_id = ? AND template_id = ? AND status = 'PENDING' ORDER BY created_at DESC")
-    .get(req.user.id, template.id);
-  if (existing) return res.status(200).json({ order: toPublicOrder(existing) });
+// POST /api/orders
+// { templateSlug } — starts or reuses a draft order.
+router.post("/", requireCustomer, async (req, res) => {
+  try {
+    const { templateSlug } = req.body || {};
 
-  const id = crypto.randomUUID();
-  db.prepare(
-    "INSERT INTO orders (id, user_id, template_id, amount) VALUES (?, ?, ?, ?)"
-  ).run(id, req.user.id, template.id, template.price);
+    const templateResult = await db.query(
+      `
+      SELECT *
+      FROM templates
+      WHERE slug = $1
+        AND is_enabled = 1
+      `,
+      [templateSlug]
+    );
 
-  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
-  res.status(201).json({ order: toPublicOrder(order) });
+    const template = templateResult.rows[0];
+
+    if (!template) {
+      return res.status(404).json({
+        error: "That template isn't available.",
+      });
+    }
+
+    // Reuse an existing PENDING draft for this user + template.
+    const existingResult = await db.query(
+      `
+      SELECT *
+      FROM orders
+      WHERE user_id = $1
+        AND template_id = $2
+        AND status = 'PENDING'
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [
+        req.user.id,
+        template.id,
+      ]
+    );
+
+    const existing = existingResult.rows[0];
+
+    if (existing) {
+      return res.status(200).json({
+        order: toPublicOrder(existing),
+      });
+    }
+
+    const id = crypto.randomUUID();
+
+    await db.query(
+      `
+      INSERT INTO orders (
+        id,
+        user_id,
+        template_id,
+        amount
+      )
+      VALUES ($1, $2, $3, $4)
+      `,
+      [
+        id,
+        req.user.id,
+        template.id,
+        template.price,
+      ]
+    );
+
+    const orderResult = await db.query(
+      "SELECT * FROM orders WHERE id = $1",
+      [id]
+    );
+
+    const order = orderResult.rows[0];
+
+    return res.status(201).json({
+      order: toPublicOrder(order),
+    });
+  } catch (err) {
+    console.error("Create order error:", err);
+
+    return res.status(500).json({
+      error: "Unable to create order.",
+    });
+  }
 });
+
 
 // GET /api/orders/:id
-router.get("/:id", requireCustomer, (req, res) => {
-  const order = loadOwnedOrder(req, res);
-  if (!order) return;
-  res.json({ order: toPublicOrder(order) });
-});
+router.get("/:id", requireCustomer, async (req, res) => {
+  try {
+    const order = await loadOwnedOrder(req, res);
 
-// PATCH /api/orders/:id — customer information step
-router.patch("/:id", requireCustomer, (req, res) => {
-  const order = loadOwnedOrder(req, res);
-  if (!order) return;
-  if (order.status !== "PENDING") {
-    return res.status(409).json({ error: "This order can no longer be edited." });
+    if (!order) return;
+
+    return res.json({
+      order: toPublicOrder(order),
+    });
+  } catch (err) {
+    console.error("Get order error:", err);
+
+    return res.status(500).json({
+      error: "Unable to load order.",
+    });
   }
+});
 
-  const { recipientName, memoryTitle, importantDate, personalMessage } = req.body || {};
-  if (!recipientName || !memoryTitle) {
-    return res.status(400).json({ error: "Recipient name and memory title are required." });
+
+// PATCH /api/orders/:id
+// Customer information step.
+router.patch("/:id", requireCustomer, async (req, res) => {
+  try {
+    const order = await loadOwnedOrder(req, res);
+
+    if (!order) return;
+
+    if (order.status !== "PENDING") {
+      return res.status(409).json({
+        error: "This order can no longer be edited.",
+      });
+    }
+
+    const {
+      recipientName,
+      memoryTitle,
+      importantDate,
+      personalMessage,
+    } = req.body || {};
+
+    if (!recipientName || !memoryTitle) {
+      return res.status(400).json({
+        error:
+          "Recipient name and memory title are required.",
+      });
+    }
+
+    await db.query(
+      `
+      UPDATE orders
+      SET
+        recipient_name = $1,
+        memory_title = $2,
+        important_date = $3,
+        personal_message = $4,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5
+      `,
+      [
+        recipientName,
+        memoryTitle,
+        importantDate || null,
+        personalMessage || null,
+        order.id,
+      ]
+    );
+
+    const updatedResult = await db.query(
+      "SELECT * FROM orders WHERE id = $1",
+      [order.id]
+    );
+
+    return res.json({
+      order: toPublicOrder(updatedResult.rows[0]),
+    });
+  } catch (err) {
+    console.error("Update order error:", err);
+
+    return res.status(500).json({
+      error: "Unable to update order.",
+    });
   }
-
-  db.prepare(
-    `UPDATE orders SET recipient_name = ?, memory_title = ?, important_date = ?, personal_message = ?, updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(recipientName, memoryTitle, importantDate || null, personalMessage || null, order.id);
-
-  res.json({ order: toPublicOrder(db.prepare("SELECT * FROM orders WHERE id = ?").get(order.id)) });
 });
 
-// GET /api/orders — the current customer's own orders, most recent first.
-// Powers profile.html.
-router.get("/", requireCustomer, (req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT orders.*, templates.name AS template_name, templates.slug AS template_slug, templates.accent AS accent
-       FROM orders JOIN templates ON templates.id = orders.template_id
-       WHERE orders.user_id = ?
-       ORDER BY orders.created_at DESC`
-    )
-    .all(req.user.id);
 
-  res.json({
-    orders: rows.map((row) => ({
-      ...toPublicOrder(row),
-      templateName: row.template_name,
-      templateSlug: row.template_slug,
-      accent: row.accent,
-    })),
-  });
-});
-// POST /api/orders/:id/media — multipart upload, up to 10 files at once
-router.post("/:id/media", requireCustomer, upload.array("files", 10), (req, res) => {
-  const order = loadOwnedOrder(req, res);
-  if (!order) return;
-  if (order.status !== "PENDING") {
-    return res.status(409).json({ error: "This order can no longer accept uploads." });
+// GET /api/orders
+// Current customer's own orders, most recent first.
+router.get("/", requireCustomer, async (req, res) => {
+  try {
+    const result = await db.query(
+      `
+      SELECT
+        orders.*,
+        templates.name AS template_name,
+        templates.slug AS template_slug,
+        templates.accent AS accent
+      FROM orders
+      JOIN templates
+        ON templates.id = orders.template_id
+      WHERE orders.user_id = $1
+      ORDER BY orders.created_at DESC
+      `,
+      [req.user.id]
+    );
+
+    return res.json({
+      orders: result.rows.map((row) => ({
+        ...toPublicOrder(row),
+        templateName: row.template_name,
+        templateSlug: row.template_slug,
+        accent: row.accent,
+      })),
+    });
+  } catch (err) {
+    console.error("Get orders error:", err);
+
+    return res.status(500).json({
+      error: "Unable to load orders.",
+    });
   }
-  if (!req.files || req.files.length === 0) {
-    return res.status(400).json({ error: "No files received." });
+});
+
+
+// POST /api/orders/:id/media
+// Multipart upload, up to 10 files at once.
+router.post(
+  "/:id/media",
+  requireCustomer,
+  upload.array("files", 10),
+  async (req, res) => {
+    try {
+      const order = await loadOwnedOrder(req, res);
+
+      if (!order) return;
+
+      if (order.status !== "PENDING") {
+        return res.status(409).json({
+          error:
+            "This order can no longer accept uploads.",
+        });
+      }
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({
+          error: "No files received.",
+        });
+      }
+
+      const maxResult = await db.query(
+        `
+        SELECT COALESCE(MAX(sort_order), -1) AS max_order
+        FROM media
+        WHERE order_id = $1
+        `,
+        [order.id]
+      );
+
+      const maxOrder =
+        Number(maxResult.rows[0].max_order);
+
+      const created = [];
+
+      for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+
+        const storedPath =
+          storage.saveFile(order.id, file);
+
+        const id = crypto.randomUUID();
+
+        const sortOrder =
+          maxOrder + 1 + i;
+
+        await db.query(
+          `
+          INSERT INTO media (
+            id,
+            order_id,
+            filename,
+            stored_path,
+            mime_type,
+            size_bytes,
+            sort_order
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `,
+          [
+            id,
+            order.id,
+            file.originalname,
+            storedPath,
+            file.mimetype,
+            file.size,
+            sortOrder,
+          ]
+        );
+
+        created.push({
+          id,
+          filename: file.originalname,
+          mimeType: file.mimetype,
+          sizeBytes: file.size,
+        });
+      }
+
+      return res.status(201).json({
+        media: created,
+      });
+    } catch (err) {
+      console.error("Upload media error:", err);
+
+      return res.status(500).json({
+        error: "Unable to upload files.",
+      });
+    }
   }
+);
 
-  const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) AS m FROM media WHERE order_id = ?").get(order.id).m;
-  const insert = db.prepare(
-    "INSERT INTO media (id, order_id, filename, stored_path, mime_type, size_bytes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  );
 
-  const created = req.files.map((file, i) => {
-    const storedPath = storage.saveFile(order.id, file);
-    const id = crypto.randomUUID();
-    insert.run(id, order.id, file.originalname, storedPath, file.mimetype, file.size, maxOrder + 1 + i);
-    return { id, filename: file.originalname, mimeType: file.mimetype, sizeBytes: file.size };
-  });
+// GET /api/orders/:id/media
+// Metadata only; bytes come from /api/media/:id/file.
+router.get(
+  "/:id/media",
+  requireCustomer,
+  async (req, res) => {
+    try {
+      const order = await loadOwnedOrder(req, res);
 
-  res.status(201).json({ media: created });
-});
+      if (!order) return;
 
-// GET /api/orders/:id/media — list (metadata only; bytes come from /api/media/:id/file)
-router.get("/:id/media", requireCustomer, (req, res) => {
-  const order = loadOwnedOrder(req, res);
-  if (!order) return;
-  const rows = db.prepare("SELECT id, filename, mime_type, size_bytes, sort_order FROM media WHERE order_id = ? ORDER BY sort_order").all(order.id);
-  res.json({ media: rows.map((r) => ({ id: r.id, filename: r.filename, mimeType: r.mime_type, sizeBytes: r.size_bytes })) });
-});
+      const result = await db.query(
+        `
+        SELECT
+          id,
+          filename,
+          mime_type,
+          size_bytes,
+          sort_order
+        FROM media
+        WHERE order_id = $1
+        ORDER BY sort_order
+        `,
+        [order.id]
+      );
+
+      return res.json({
+        media: result.rows.map((r) => ({
+          id: r.id,
+          filename: r.filename,
+          mimeType: r.mime_type,
+          sizeBytes: r.size_bytes,
+        })),
+      });
+    } catch (err) {
+      console.error("Get media error:", err);
+
+      return res.status(500).json({
+        error: "Unable to load media.",
+      });
+    }
+  }
+);
+
 
 // DELETE /api/orders/:id/media/:mediaId
-router.delete("/:id/media/:mediaId", requireCustomer, (req, res) => {
-  const order = loadOwnedOrder(req, res);
-  if (!order) return;
-  const media = db.prepare("SELECT * FROM media WHERE id = ? AND order_id = ?").get(req.params.mediaId, order.id);
-  if (!media) return res.status(404).json({ error: "File not found." });
+router.delete(
+  "/:id/media/:mediaId",
+  requireCustomer,
+  async (req, res) => {
+    try {
+      const order = await loadOwnedOrder(req, res);
 
-  storage.deleteFile(media.stored_path);
-  db.prepare("DELETE FROM media WHERE id = ?").run(media.id);
-  res.json({ ok: true });
-});
+      if (!order) return;
+
+      const mediaResult = await db.query(
+        `
+        SELECT *
+        FROM media
+        WHERE id = $1
+          AND order_id = $2
+        `,
+        [
+          req.params.mediaId,
+          order.id,
+        ]
+      );
+
+      const media = mediaResult.rows[0];
+
+      if (!media) {
+        return res.status(404).json({
+          error: "File not found.",
+        });
+      }
+
+      storage.deleteFile(media.stored_path);
+
+      await db.query(
+        "DELETE FROM media WHERE id = $1",
+        [media.id]
+      );
+
+      return res.json({
+        ok: true,
+      });
+    } catch (err) {
+      console.error("Delete media error:", err);
+
+      return res.status(500).json({
+        error: "Unable to delete file.",
+      });
+    }
+  }
+);
+
 
 module.exports = router;

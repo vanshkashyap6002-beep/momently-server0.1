@@ -1,88 +1,96 @@
-const express = require('express');
-const router = express.Router();
-const db = require('../lib/db');
+const express = require("express");
+const db = require("../lib/db");
+const { requireCustomer } = require("../middleware/customerAuth");
 
-// Import middleware safely whether exported as a function or an object
-const customerAuthModule = require('../middleware/customerAuth');
-const customerAuth = typeof customerAuthModule === 'function'
-  ? customerAuthModule
-  : (customerAuthModule.authenticateCustomer || customerAuthModule.requireAuth || customerAuthModule.customerAuth || Object.values(customerAuthModule)[0]);
+const router = express.Router();
 
 // GET /api/profile
-router.get('/', customerAuth, (req, res) => {
+router.get("/", requireCustomer, async (req, res) => {
   try {
-    const userId = req.user.userId || req.user.id;
+    const result = await db.query(
+      `SELECT
+         id,
+         full_name,
+         email,
+         avatar_url,
+         date_of_birth,
+         gender,
+         relationship_status,
+         bio,
+         created_at
+       FROM users
+       WHERE id = $1`,
+      [req.user.id]
+    );
 
-    const user = db.prepare(`
-      SELECT id, full_name, email, avatar_url, date_of_birth, gender, relationship_status, bio, created_at
-      FROM users
-      WHERE id = ?
-    `).get(userId);
+    const user = result.rows[0];
 
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
+      return res.status(404).json({ error: "User not found." });
     }
 
-    res.json({
-      success: true,
-      data: {
-        id: user.id,
-        full_name: user.full_name || '',
-        email: user.email,
-        avatar_url: user.avatar_url || '',
-        date_of_birth: user.date_of_birth || '',
-        gender: user.gender || '',
-        relationship_status: user.relationship_status || '',
-        bio: user.bio || '',
-        created_at: user.created_at
-      }
-    });
+    res.json({ user });
   } catch (err) {
-    console.error('Profile GET error:', err);
-    res.status(500).json({ success: false, message: 'Failed to retrieve profile.' });
+    console.error("Profile fetch error:", err);
+    res.status(500).json({ error: "Unable to load profile." });
   }
 });
 
 // PUT /api/profile
-router.put('/', customerAuth, (req, res) => {
-  try {
-    const userId = req.user.userId || req.user.id;
-    const { full_name, date_of_birth, gender, relationship_status, bio } = req.body;
+router.put("/", requireCustomer, async (req, res) => {
+  const {
+    fullName,
+    dateOfBirth,
+    gender,
+    relationshipStatus,
+    bio,
+  } = req.body || {};
 
-    if (!full_name || full_name.trim().length === 0) {
-      return res.status(400).json({ success: false, message: 'Full name is required.' });
+  try {
+    await db.query(
+      `UPDATE users
+       SET full_name = $1,
+           date_of_birth = $2,
+           gender = $3,
+           relationship_status = $4,
+           bio = $5
+       WHERE id = $6`,
+      [
+        fullName || null,
+        dateOfBirth || null,
+        gender || null,
+        relationshipStatus || null,
+        bio || null,
+        req.user.id,
+      ]
+    );
+
+    const result = await db.query(
+      `SELECT
+         id,
+         full_name,
+         email,
+         avatar_url,
+         date_of_birth,
+         gender,
+         relationship_status,
+         bio,
+         created_at
+       FROM users
+       WHERE id = $1`,
+      [req.user.id]
+    );
+
+    const updated = result.rows[0];
+
+    if (!updated) {
+      return res.status(404).json({ error: "User not found." });
     }
 
-    const cleanName = full_name.trim();
-    const cleanDob = date_of_birth ? date_of_birth.trim() : null;
-    const cleanGender = gender ? gender.trim() : null;
-    const cleanRel = relationship_status ? relationship_status.trim() : null;
-    const cleanBio = bio ? bio.trim() : null;
-
-    db.prepare(`
-      UPDATE users
-      SET full_name = ?,
-          date_of_birth = ?,
-          gender = ?,
-          relationship_status = ?,
-          bio = ?
-      WHERE id = ?
-    `).run(cleanName, cleanDob, cleanGender, cleanRel, cleanBio, userId);
-
-    const updated = db.prepare(`
-      SELECT id, full_name, email, avatar_url, date_of_birth, gender, relationship_status, bio, created_at
-      FROM users
-      WHERE id = ?
-    `).get(userId);
-
-    res.json({
-      success: true,
-      message: 'Profile updated successfully.',
-      data: updated
-    });
+    res.json({ user: updated });
   } catch (err) {
-    console.error('Profile PUT error:', err);
-    res.status(500).json({ success: false, message: 'Failed to update profile.' });
+    console.error("Profile update error:", err);
+    res.status(500).json({ error: "Unable to update profile." });
   }
 });
 
