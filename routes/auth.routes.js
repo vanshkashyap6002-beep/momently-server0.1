@@ -321,10 +321,10 @@ router.get("/google/callback", async (req, res) => {
 
 // POST /api/auth/logout
 router.post("/logout", (_req, res) => {
-  res.clearCookie(
-    CUSTOMER_COOKIE,
-    { path: "/" }
-  );
+  res.clearCookie(CUSTOMER_COOKIE, {
+    ...cookieOptions,
+    maxAge: undefined,
+  });
 
   res.json({ ok: true });
 });
