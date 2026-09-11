@@ -14,6 +14,8 @@ function toPublicTemplate(row) {
     mood: row.mood,
     accent: row.accent,
     price: row.price,
+    shortDescription: row.shortDescription,
+    description: row.description,
     previewImageUrl: `https://picsum.photos/seed/${encodeURIComponent(
       row.preview_seed
     )}/640/480`,

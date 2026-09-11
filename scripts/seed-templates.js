@@ -18,7 +18,12 @@ const TEMPLATES = [
     price: 0,
     previewSeed: "golden-hour-letter",
     creatorName: "Momently",
+    shortDescription:
+      "A surprise that unfolds like opening a real gift box.",
+    description:
+      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
   },
+
   {
     slug: "paper-lantern-album",
     name: "Paper Lantern Album",
@@ -30,7 +35,12 @@ const TEMPLATES = [
     price: 499,
     previewSeed: "paper-lantern-album",
     creatorName: "Momently",
+    shortDescription:
+      "A surprise that unfolds like opening a real gift box.",
+    description:
+      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
   },
+
   {
     slug: "quiet-bloom-reel",
     name: "Quiet Bloom Reel",
@@ -42,7 +52,12 @@ const TEMPLATES = [
     price: 799,
     previewSeed: "quiet-bloom-reel",
     creatorName: "Momently",
+    shortDescription:
+      "A surprise that unfolds like opening a real gift box.",
+    description:
+      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
   },
+
   {
     slug: "late-night-note",
     name: "Late Night Note",
@@ -54,7 +69,12 @@ const TEMPLATES = [
     price: 1299,
     previewSeed: "late-night-note",
     creatorName: "Momently",
+    shortDescription:
+      "A surprise that unfolds like opening a real gift box.",
+    description:
+      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
   },
+
   {
     slug: "first-light-scrapbook",
     name: "First Light Scrapbook",
@@ -66,7 +86,12 @@ const TEMPLATES = [
     price: 0,
     previewSeed: "first-light-scrapbook",
     creatorName: "Momently",
+    shortDescription:
+      "A surprise that unfolds like opening a real gift box.",
+    description:
+      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
   },
+
   {
     slug: "velvet-hour-timeline",
     name: "Velvet Hour Timeline",
@@ -78,7 +103,12 @@ const TEMPLATES = [
     price: 599,
     previewSeed: "velvet-hour-timeline",
     creatorName: "Momently",
+    shortDescription:
+      "A surprise that unfolds like opening a real gift box.",
+    description:
+      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
   },
+
   {
     slug: "soft-landing-postcard",
     name: "Soft Landing Postcard",
@@ -90,7 +120,12 @@ const TEMPLATES = [
     price: 0,
     previewSeed: "soft-landing-postcard",
     creatorName: "Momently",
+    shortDescription:
+      "A surprise that unfolds like opening a real gift box.",
+    description:
+      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
   },
+
   {
     slug: "open-window-diary",
     name: "Open Window Diary",
@@ -102,7 +137,11 @@ const TEMPLATES = [
     price: 399,
     previewSeed: "open-window-diary",
     creatorName: "Momently",
-  },
+    shortDescription:
+      "A surprise that unfolds like opening a real gift box.",
+    description:
+      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
+  }
 ];
 
 async function seedTemplates() {
@@ -121,7 +160,9 @@ async function seedTemplates() {
           accent,
           price,
           preview_seed,
-          creator_name
+          creator_name,
+          "shortDescription",
+          description
         )
         VALUES (
           $1,
@@ -134,7 +175,9 @@ async function seedTemplates() {
           $8,
           $9,
           $10,
-          $11
+          $11,
+          $12,
+          $13
         )
         ON CONFLICT (slug)
         DO UPDATE SET
@@ -146,7 +189,9 @@ async function seedTemplates() {
           accent = EXCLUDED.accent,
           price = EXCLUDED.price,
           preview_seed = EXCLUDED.preview_seed,
-          creator_name = EXCLUDED.creator_name
+          creator_name = EXCLUDED.creator_name,
+          "shortDescription" = EXCLUDED."shortDescription",
+          description = EXCLUDED.description
         `,
         [
           crypto.randomUUID(),
@@ -160,6 +205,8 @@ async function seedTemplates() {
           template.price,
           template.previewSeed,
           template.creatorName,
+          template.shortDescription,
+          template.description
         ]
       );
     }
