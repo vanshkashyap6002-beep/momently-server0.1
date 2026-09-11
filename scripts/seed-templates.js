@@ -10,6 +10,11 @@ const TEMPLATES = [
   {
     slug: "golden-hour-letter",
     name: "Golden Hour Letter",
+    shortDescription:
+    "A surprise that unfolds like opening a real gift box.",
+
+  description:
+    "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise.",
     occasion: "Birthday",
     theme: "Playful",
     style: "Polaroid",
