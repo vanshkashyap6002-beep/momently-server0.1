@@ -1,221 +1,384 @@
-// Seeds the master template catalog.
-// PostgreSQL version.
-// Safe to run multiple times because templates are upserted by slug.
-
-const crypto = require("crypto");
-require("../lib/env");
+const express = require("express");
 const db = require("../lib/db");
 
-const TEMPLATES = [
-  {
-    slug: "golden-hour-letter",
-    name: "Golden Hour Letter",
-    occasion: "Birthday",
-    theme: "Playful",
-    style: "Polaroid",
-    mood: "Joyful",
-    accent: "birthday",
-    price: 0,
-    previewSeed: "golden-hour-letter",
-    creatorName: "Momently",
-    shortDescription:
-      "A surprise that unfolds like opening a real gift box.",
-    description:
-      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
-  },
+const router = express.Router();
 
-  {
-    slug: "paper-lantern-album",
-    name: "Paper Lantern Album",
-    occasion: "Anniversary",
-    theme: "Romantic",
-    style: "Cinematic",
-    mood: "Warm",
-    accent: "anniversary",
-    price: 499,
-    previewSeed: "paper-lantern-album",
-    creatorName: "Momently",
-    shortDescription:
-      "A surprise that unfolds like opening a real gift box.",
-    description:
-      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
-  },
+function toPublicTemplate(row) {
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    occasion: row.occasion,
+    theme: row.theme,
+    style: row.style,
+    mood: row.mood,
+    accent: row.accent,
+    price: row.price,
+    shortDescription: row.shortDescription,
+    description: row.description,
+    previewImageUrl: `https://picsum.photos/seed/${encodeURIComponent(
+      row.preview_seed
+    )}/640/480`,
+    creatorName: row.creator_name,
+  };
+}
 
-  {
-    slug: "quiet-bloom-reel",
-    name: "Quiet Bloom Reel",
-    occasion: "Proposal",
-    theme: "Romantic",
-    style: "Cinematic",
-    mood: "Dreamy",
-    accent: "proposal",
-    price: 799,
-    previewSeed: "quiet-bloom-reel",
-    creatorName: "Momently",
-    shortDescription:
-      "A surprise that unfolds like opening a real gift box.",
-    description:
-      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
-  },
+/*
+|--------------------------------------------------------------------------
+| CUSTOMER ROUTES
+|--------------------------------------------------------------------------
+*/
 
-  {
-    slug: "late-night-note",
-    name: "Late Night Note",
-    occasion: "Wedding",
-    theme: "Elegant",
-    style: "Editorial",
-    mood: "Sentimental",
-    accent: "wedding",
-    price: 1299,
-    previewSeed: "late-night-note",
-    creatorName: "Momently",
-    shortDescription:
-      "A surprise that unfolds like opening a real gift box.",
-    description:
-      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
-  },
-
-  {
-    slug: "first-light-scrapbook",
-    name: "First Light Scrapbook",
-    occasion: "Valentine",
-    theme: "Nostalgic",
-    style: "Storybook",
-    mood: "Sentimental",
-    accent: "anniversary",
-    price: 0,
-    previewSeed: "first-light-scrapbook",
-    creatorName: "Momently",
-    shortDescription:
-      "A surprise that unfolds like opening a real gift box.",
-    description:
-      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
-  },
-
-  {
-    slug: "velvet-hour-timeline",
-    name: "Velvet Hour Timeline",
-    occasion: "Graduation",
-    theme: "Bold",
-    style: "Editorial",
-    mood: "Dramatic",
-    accent: "wedding",
-    price: 599,
-    previewSeed: "velvet-hour-timeline",
-    creatorName: "Momently",
-    shortDescription:
-      "A surprise that unfolds like opening a real gift box.",
-    description:
-      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
-  },
-
-  {
-    slug: "soft-landing-postcard",
-    name: "Soft Landing Postcard",
-    occasion: "Baby Announcement",
-    theme: "Minimal",
-    style: "Handwritten",
-    mood: "Warm",
-    accent: "birthday",
-    price: 0,
-    previewSeed: "soft-landing-postcard",
-    creatorName: "Momently",
-    shortDescription:
-      "A surprise that unfolds like opening a real gift box.",
-    description:
-      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
-  },
-
-  {
-    slug: "open-window-diary",
-    name: "Open Window Diary",
-    occasion: "Farewell",
-    theme: "Nostalgic",
-    style: "Handwritten",
-    mood: "Sentimental",
-    accent: "proposal",
-    price: 399,
-    previewSeed: "open-window-diary",
-    creatorName: "Momently",
-    shortDescription:
-      "A surprise that unfolds like opening a real gift box.",
-    description:
-      "A cinematic interactive experience where memories rise from a little box, followed by your reasons, your letter, and a final surprise."
-  }
-];
-
-async function seedTemplates() {
+// GET /api/templates
+// Customers can only see enabled templates.
+router.get("/", async (req, res) => {
   try {
-    for (const template of TEMPLATES) {
-      await db.query(
-        `
-        INSERT INTO templates (
-          id,
-          slug,
-          name,
-          occasion,
-          theme,
-          style,
-          mood,
-          accent,
-          price,
-          preview_seed,
-          creator_name,
-          "shortDescription",
-          description
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          $8,
-          $9,
-          $10,
-          $11,
-          $12,
-          $13
-        )
-        ON CONFLICT (slug)
-        DO UPDATE SET
-          name = EXCLUDED.name,
-          occasion = EXCLUDED.occasion,
-          theme = EXCLUDED.theme,
-          style = EXCLUDED.style,
-          mood = EXCLUDED.mood,
-          accent = EXCLUDED.accent,
-          price = EXCLUDED.price,
-          preview_seed = EXCLUDED.preview_seed,
-          creator_name = EXCLUDED.creator_name,
-          "shortDescription" = EXCLUDED."shortDescription",
-          description = EXCLUDED.description
-        `,
-        [
-          crypto.randomUUID(),
-          template.slug,
-          template.name,
-          template.occasion,
-          template.theme,
-          template.style,
-          template.mood,
-          template.accent,
-          template.price,
-          template.previewSeed,
-          template.creatorName,
-          template.shortDescription,
-          template.description
-        ]
+    const result = await db.query(`
+      SELECT *
+      FROM templates
+      WHERE is_enabled = 1
+      ORDER BY created_at DESC
+    `);
+
+    let templates = result.rows.map(toPublicTemplate);
+
+    const {
+      occasion,
+      theme,
+      style,
+      mood,
+      search,
+      maxPrice,
+    } = req.query;
+
+    if (occasion) {
+      templates = templates.filter(
+        (t) => t.occasion === occasion
       );
     }
 
-    console.log(`Seeded ${TEMPLATES.length} templates.`);
-  } catch (err) {
-    console.error("Template seeding failed:", err);
-    throw err;
-  }
-}
+    if (theme) {
+      templates = templates.filter(
+        (t) => t.theme === theme
+      );
+    }
 
-seedTemplates();
+    if (style) {
+      templates = templates.filter(
+        (t) => t.style === style
+      );
+    }
+
+    if (mood) {
+      templates = templates.filter(
+        (t) => t.mood === mood
+      );
+    }
+
+    if (maxPrice !== undefined) {
+      const price = Number(maxPrice);
+
+      if (!Number.isNaN(price)) {
+        templates = templates.filter(
+          (t) => t.price <= price
+        );
+      }
+    }
+
+    if (search) {
+      const q = String(search).toLowerCase();
+
+      templates = templates.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.occasion.toLowerCase().includes(q)
+      );
+    }
+
+    return res.json({ templates });
+  } catch (err) {
+    console.error("Get templates error:", err);
+
+    return res.status(500).json({
+      error: "Unable to load templates.",
+    });
+  }
+});
+
+// GET /api/templates/:slug
+router.get("/:slug", async (req, res) => {
+  try {
+    const result = await db.query(
+      `
+      SELECT *
+      FROM templates
+      WHERE slug = $1
+        AND is_enabled = 1
+      `,
+      [req.params.slug]
+    );
+
+    const row = result.rows[0];
+
+    if (!row) {
+      return res.status(404).json({
+        error: "Template not found.",
+      });
+    }
+
+    return res.json({
+      template: toPublicTemplate(row),
+    });
+  } catch (err) {
+    console.error("Get template error:", err);
+
+    return res.status(500).json({
+      error: "Unable to load template.",
+    });
+  }
+});
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN ROUTES
+|--------------------------------------------------------------------------
+*/
+
+// GET /api/templates/admin
+// Returns ALL templates, including disabled ones.
+router.get("/admin", async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT *
+      FROM templates
+      ORDER BY created_at DESC
+    `);
+
+    return res.json({
+      templates: result.rows.map((row) => ({
+        ...toPublicTemplate(row),
+        isEnabled: row.is_enabled === 1,
+      })),
+    });
+  } catch (err) {
+    console.error("Admin get templates error:", err);
+
+    return res.status(500).json({
+      error: "Unable to load admin templates.",
+    });
+  }
+});
+
+// POST /api/templates/admin
+// Add a new template.
+router.post("/admin", async (req, res) => {
+  try {
+    const {
+      slug,
+      name,
+      occasion,
+      theme,
+      style,
+      mood,
+      accent,
+      price,
+      previewSeed,
+      creatorName,
+      shortDescription,
+      description,
+    } = req.body;
+
+    if (
+      !slug ||
+      !name ||
+      !occasion ||
+      !accent ||
+      price === undefined ||
+      !previewSeed
+    ) {
+      return res.status(400).json({
+        error: "Please fill all required template fields.",
+      });
+    }
+
+    const id = crypto.randomUUID();
+
+    const result = await db.query(
+      `
+      INSERT INTO templates (
+        id,
+        slug,
+        name,
+        occasion,
+        theme,
+        style,
+        mood,
+        accent,
+        price,
+        preview_seed,
+        creator_name,
+        "shortDescription",
+        description
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7,
+        $8, $9, $10, $11, $12, $13
+      )
+      RETURNING *
+      `,
+      [
+        id,
+        slug,
+        name,
+        occasion,
+        theme || null,
+        style || null,
+        mood || null,
+        accent,
+        Number(price),
+        previewSeed,
+        creatorName || "Momently",
+        shortDescription || "",
+        description || "",
+      ]
+    );
+
+    return res.status(201).json({
+      message: "Template created successfully.",
+      template: toPublicTemplate(result.rows[0]),
+    });
+  } catch (err) {
+    console.error("Create template error:", err);
+
+    if (err.code === "23505") {
+      return res.status(409).json({
+        error: "A template with this slug already exists.",
+      });
+    }
+
+    return res.status(500).json({
+      error: "Unable to create template.",
+    });
+  }
+});
+
+// PUT /api/templates/admin/:id
+// Edit an existing template.
+router.put("/admin/:id", async (req, res) => {
+  try {
+    const {
+      slug,
+      name,
+      occasion,
+      theme,
+      style,
+      mood,
+      accent,
+      price,
+      previewSeed,
+      creatorName,
+      shortDescription,
+      description,
+      isEnabled,
+    } = req.body;
+
+    const result = await db.query(
+      `
+      UPDATE templates
+      SET
+        slug = $1,
+        name = $2,
+        occasion = $3,
+        theme = $4,
+        style = $5,
+        mood = $6,
+        accent = $7,
+        price = $8,
+        preview_seed = $9,
+        creator_name = $10,
+        "shortDescription" = $11,
+        description = $12,
+        is_enabled = $13
+      WHERE id = $14
+      RETURNING *
+      `,
+      [
+        slug,
+        name,
+        occasion,
+        theme || null,
+        style || null,
+        mood || null,
+        accent,
+        Number(price),
+        previewSeed,
+        creatorName || "Momently",
+        shortDescription || "",
+        description || "",
+        isEnabled === false ? 0 : 1,
+        req.params.id,
+      ]
+    );
+
+    if (!result.rows[0]) {
+      return res.status(404).json({
+        error: "Template not found.",
+      });
+    }
+
+    return res.json({
+      message: "Template updated successfully.",
+      template: toPublicTemplate(result.rows[0]),
+    });
+  } catch (err) {
+    console.error("Update template error:", err);
+
+    if (err.code === "23505") {
+      return res.status(409).json({
+        error: "A template with this slug already exists.",
+      });
+    }
+
+    return res.status(500).json({
+      error: "Unable to update template.",
+    });
+  }
+});
+
+// DELETE /api/templates/admin/:id
+// We disable instead of permanently deleting.
+router.delete("/admin/:id", async (req, res) => {
+  try {
+    const result = await db.query(
+      `
+      UPDATE templates
+      SET is_enabled = 0
+      WHERE id = $1
+      RETURNING *
+      `,
+      [req.params.id]
+    );
+
+    if (!result.rows[0]) {
+      return res.status(404).json({
+        error: "Template not found.",
+      });
+    }
+
+    return res.json({
+      message: "Template disabled successfully.",
+      template: {
+        ...toPublicTemplate(result.rows[0]),
+        isEnabled: false,
+      },
+    });
+  } catch (err) {
+    console.error("Disable template error:", err);
+
+    return res.status(500).json({
+      error: "Unable to disable template.",
+    });
+  }
+});
+
+module.exports = router;
