@@ -1,12 +1,14 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const db = require("../lib/db");
+const crypto = require("crypto");
 
 const {
   signAdminToken,
   ADMIN_COOKIE,
-  cookieOptions
+  cookieOptions,
 } = require("../lib/jwt");
+
 const {
   requireAdmin,
 } = require("../middleware/adminAuth");
@@ -26,9 +28,28 @@ router.post("/login", async (req, res) => {
   const { email, password } = req.body || {};
 
   try {
+    const normalizedEmail = String(
+      email || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const normalizedPassword = String(
+      password || ""
+    );
+
+    if (
+      !normalizedEmail ||
+      !normalizedPassword
+    ) {
+      return res.status(400).json({
+        error: "Email and password are required.",
+      });
+    }
+
     const result = await db.query(
       "SELECT * FROM admin_users WHERE email = $1",
-      [String(email || "").toLowerCase()]
+      [normalizedEmail]
     );
 
     const admin = result.rows[0];
@@ -40,7 +61,7 @@ router.post("/login", async (req, res) => {
     }
 
     const ok = await bcrypt.compare(
-      password || "",
+      normalizedPassword,
       admin.password_hash
     );
 
@@ -66,7 +87,6 @@ router.post("/login", async (req, res) => {
         email: admin.email,
       },
     });
-
   } catch (err) {
     console.error(
       "Admin login error:",
@@ -97,20 +117,25 @@ router.get(
     });
   }
 );
+
+
 // ============================================================
 // ADMIN LOGOUT
 // ============================================================
 
-router.post("/logout", (_req, res) => {
-  res.clearCookie(
-    ADMIN_COOKIE,
-    cookieOptions
-  );
+router.post(
+  "/logout",
+  (_req, res) => {
+    res.clearCookie(
+      ADMIN_COOKIE,
+      cookieOptions
+    );
 
-  res.json({
-    ok: true
-  });
-});
+    return res.json({
+      ok: true,
+    });
+  }
+);
 
 
 // ============================================================
@@ -123,14 +148,11 @@ router.get(
   "/orders",
   requireAdmin,
   async (req, res) => {
-
     try {
-
       const {
         status,
         search,
       } = req.query;
-
 
       let sql = `
         SELECT
@@ -146,24 +168,23 @@ router.get(
         WHERE 1 = 1
       `;
 
-
       const params = [];
 
-
       if (status) {
-
-        params.push(status);
+        params.push(
+          String(status).trim()
+        );
 
         sql += `
           AND orders.status = $${params.length}
         `;
       }
 
-
       if (search) {
-
         params.push(
-          `%${String(search).toLowerCase()}%`
+          `%${String(search)
+            .trim()
+            .toLowerCase()}%`
         );
 
         sql += `
@@ -193,11 +214,9 @@ router.get(
         `;
       }
 
-
       sql += `
         ORDER BY orders.created_at DESC
       `;
-
 
       const result =
         await db.query(
@@ -205,60 +224,100 @@ router.get(
           params
         );
 
+      const rows = result.rows;
 
-      const rows =
-        result.rows;
+for (const row of rows) {
+  const mediaResult = await db.query(
+    `
+      SELECT
+        id,
+        filename,
+        mime_type,
+        size_bytes
+      FROM media
+      WHERE order_id = $1
+      ORDER BY sort_order
+    `,
+    [row.id]
+  );
 
+  const timelineResult = await db.query(
+    `
+      SELECT
+        id,
+        entry_date,
+        title,
+        description,
+        sort_order
+      FROM memory_timeline
+      WHERE order_id = $1
+      ORDER BY sort_order
+    `,
+    [row.id]
+  );
 
-      for (const row of rows) {
+  row.media = mediaResult.rows.map((media) => ({
+    id: media.id,
+    filename: media.filename,
+    mimeType: media.mime_type,
+    sizeBytes: media.size_bytes,
+  }));
 
-        const mediaResult =
-          await db.query(
-            `
-            SELECT
-              id,
-              filename,
-              mime_type,
-              size_bytes
-            FROM media
-            WHERE order_id = $1
-            ORDER BY sort_order
-            `,
-            [row.id]
-          );
+  row.timeline = timelineResult.rows.map((entry) => ({
+    id: entry.id,
+    date: entry.entry_date,
+    title: entry.title,
+    description: entry.description,
+    sortOrder: entry.sort_order,
+  }));
+}
 
+const orders = rows.map((row) => ({
+  id: row.id,
+  userId: row.user_id,
+  templateId: row.template_id,
 
-        const timelineResult =
-          await db.query(
-            `
-            SELECT
-              id,
-              entry_date,
-              title,
-              description,
-              sort_order
-            FROM memory_timeline
-            WHERE order_id = $1
-            ORDER BY sort_order
-            `,
-            [row.id]
-          );
+  customerName: row.customer_name,
+  customerEmail: row.customer_email,
+  templateName: row.template_name,
 
+  recipientName: row.recipient_name,
+  memoryTitle: row.memory_title,
+  memorySubtitle: row.memory_subtitle,
+  importantDate: row.important_date,
+  personalMessage: row.personal_message,
 
-        row.media =
-          mediaResult.rows;
+  memoryClosingMessage: row.memory_closing_message,
+  memorySongTitle: row.memory_song_title,
+  memorySongArtist: row.memory_song_artist,
 
-        row.timeline =
-          timelineResult.rows;
-      }
+  memorySlug: row.memory_slug,
+
+  amount: row.amount,
+  status: row.status,
+  paymentStatus: row.payment_status,
+
+  razorpayOrderId: row.razorpay_order_id,
+  razorpayPaymentId: row.razorpay_payment_id,
+
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  publishedAt: row.published_at,
+
+  media: row.media,
+  timeline: row.timeline,
+}));
+
+return res.json({
+  orders,
+});
+
 
 
       return res.json({
         orders: rows,
       });
-
     } catch (err) {
-
       console.error(
         "Admin orders error:",
         err
@@ -281,9 +340,7 @@ router.get(
   "/orders/:id",
   requireAdmin,
   async (req, res) => {
-
     try {
-
       const result =
         await db.query(
           `
@@ -294,19 +351,15 @@ router.get(
           [req.params.id]
         );
 
-
       const order =
         result.rows[0];
 
-
       if (!order) {
-
         return res.status(404).json({
           error:
             "Order not found.",
         });
       }
-
 
       const mediaResult =
         await db.query(
@@ -319,7 +372,6 @@ router.get(
           [order.id]
         );
 
-
       const timelineResult =
         await db.query(
           `
@@ -331,7 +383,6 @@ router.get(
           [order.id]
         );
 
-
       return res.json({
         order,
         media:
@@ -339,9 +390,7 @@ router.get(
         timeline:
           timelineResult.rows,
       });
-
     } catch (err) {
-
       console.error(
         "Admin order error:",
         err
@@ -359,55 +408,79 @@ router.get(
 // ============================================================
 // UPDATE ORDER STATUS
 // ============================================================
+//
+// IMPORTANT:
+// PAID must ONLY be produced by a verified payment flow.
+// Admin cannot manually manufacture a PAID state.
+//
+// Allowed manual workflow:
+//
+// PENDING
+//   ↓
+// IN_PROGRESS
+//   ↓
+// READY
+//   ↓
+// PUBLISHED
+//
+// But IN_PROGRESS / READY / PUBLISHED require verified payment.
+// ============================================================
 
 router.patch(
   "/orders/:id/status",
   requireAdmin,
   async (req, res) => {
-
     const {
       status,
     } = req.body || {};
 
-
-    const allowedStatuses = [
+    const allowedManualStatuses = [
       "PENDING",
-      "PAID",
       "IN_PROGRESS",
       "READY",
       "PUBLISHED",
     ];
 
-
     if (
-      !allowedStatuses.includes(status)
+      !allowedManualStatuses.includes(status)
     ) {
-
       return res.status(400).json({
         error:
-          "Invalid status.",
+          "Invalid manual status.",
       });
     }
 
+    let client;
 
     try {
+      client =
+        await db.pool.connect();
 
+      await client.query("BEGIN");
+
+      /*
+       * Lock the order while validating and changing its workflow state.
+       * This prevents concurrent admin changes from racing with payment
+       * verification/webhook updates.
+       */
       const result =
-        await db.query(
+        await client.query(
           `
           SELECT *
           FROM orders
           WHERE id = $1
+          FOR UPDATE
           `,
           [req.params.id]
         );
 
-
       const order =
         result.rows[0];
 
-
       if (!order) {
+        await client.query(
+          "ROLLBACK"
+        );
 
         return res.status(404).json({
           error:
@@ -415,21 +488,117 @@ router.patch(
         });
       }
 
+      /*
+       * A paid order must never be moved backwards to PENDING.
+       */
+      if (
+        status === "PENDING" &&
+        order.payment_status === "PAID"
+      ) {
+        await client.query(
+          "ROLLBACK"
+        );
 
-      await db.query(
-        `
-        UPDATE orders
-        SET
-          status = $1,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2
-        `,
+        return res.status(409).json({
+          error:
+            "A paid order cannot be moved back to PENDING.",
+        });
+      }
+
+      /*
+       * Everything after payment requires a verified PAID state.
+       *
+       * Admin cannot simply choose PAID anymore.
+       */
+      if (
         [
-          status,
-          order.id,
-        ]
-      );
+          "IN_PROGRESS",
+          "READY",
+          "PUBLISHED",
+        ].includes(status)
+      ) {
+        if (
+          order.payment_status !== "PAID"
+        ) {
+          await client.query(
+            "ROLLBACK"
+          );
 
+          return res.status(409).json({
+            error:
+              "Payment must be verified before moving this order forward.",
+          });
+        }
+      }
+
+      /*
+       * An order that is already published should not be manually moved
+       * backwards into an earlier workflow state.
+       */
+      if (
+        order.status === "PUBLISHED" &&
+        status !== "PUBLISHED"
+      ) {
+        await client.query(
+          "ROLLBACK"
+        );
+
+        return res.status(409).json({
+          error:
+            "A published order cannot be moved backwards.",
+        });
+      }
+
+      /*
+       * READY and PUBLISHED require the order to have payment information.
+       */
+      if (
+        [
+          "READY",
+          "PUBLISHED",
+        ].includes(status)
+      ) {
+        if (
+          !order.razorpay_order_id ||
+          !order.razorpay_payment_id
+        ) {
+          await client.query(
+            "ROLLBACK"
+          );
+
+          return res.status(409).json({
+            error:
+              "Verified payment information is missing.",
+          });
+        }
+      }
+
+      const updateResult =
+        await client.query(
+          `
+          UPDATE orders
+          SET
+            status = $1,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2
+          `,
+          [
+            status,
+            order.id,
+          ]
+        );
+
+      if (
+        updateResult.rowCount !== 1
+      ) {
+        throw new Error(
+          "Order status update failed."
+        );
+      }
+
+      await client.query(
+        "COMMIT"
+      );
 
       return res.json({
         ok: true,
@@ -438,8 +607,16 @@ router.patch(
           status,
         },
       });
-
     } catch (err) {
+      if (client) {
+        try {
+          await client.query(
+            "ROLLBACK"
+          );
+        } catch {
+          // Ignore rollback failure.
+        }
+      }
 
       console.error(
         "Admin status update error:",
@@ -450,6 +627,10 @@ router.patch(
         error:
           "Unable to update order status.",
       });
+    } finally {
+      if (client) {
+        client.release();
+      }
     }
   }
 );
@@ -463,7 +644,6 @@ router.put(
   "/orders/:id/memory",
   requireAdmin,
   async (req, res) => {
-
     const {
       memoryTitle,
       memorySubtitle,
@@ -473,9 +653,7 @@ router.put(
       timeline,
     } = req.body || {};
 
-
     try {
-
       const result =
         await db.query(
           `
@@ -486,19 +664,15 @@ router.put(
           [req.params.id]
         );
 
-
       const order =
         result.rows[0];
 
-
       if (!order) {
-
         return res.status(404).json({
           error:
             "Order not found.",
         });
       }
-
 
       await db.query(
         `
@@ -522,17 +696,13 @@ router.put(
         ]
       );
 
-
       const client =
         await db.pool.connect();
 
-
       try {
-
         await client.query(
           "BEGIN"
         );
-
 
         await client.query(
           `
@@ -542,22 +712,18 @@ router.put(
           [order.id]
         );
 
-
         const entries =
           Array.isArray(timeline)
             ? timeline
             : [];
-
 
         for (
           let i = 0;
           i < entries.length;
           i++
         ) {
-
           const entry =
-            entries[i];
-
+            entries[i] || {};
 
           await client.query(
             `
@@ -580,7 +746,7 @@ router.put(
             )
             `,
             [
-              require("crypto").randomUUID(),
+              crypto.randomUUID(),
               order.id,
               entry.entryDate || null,
               entry.title || null,
@@ -590,31 +756,23 @@ router.put(
           );
         }
 
-
         await client.query(
           "COMMIT"
         );
-
       } catch (err) {
-
         await client.query(
           "ROLLBACK"
         );
 
         throw err;
-
       } finally {
-
         client.release();
       }
-
 
       return res.json({
         ok: true,
       });
-
     } catch (err) {
-
       console.error(
         "Admin memory save error:",
         err
@@ -637,11 +795,20 @@ router.post(
   "/orders/:id/publish",
   requireAdmin,
   async (req, res) => {
+    let client;
 
     try {
+      client =
+        await db.pool.connect();
 
+      await client.query("BEGIN");
+
+      /*
+       * Lock the order during the publish transition so another admin
+       * request cannot publish the same order simultaneously.
+       */
       const result =
-        await db.query(
+        await client.query(
           `
           SELECT
             orders.*,
@@ -650,16 +817,18 @@ router.post(
           JOIN users
             ON users.id = orders.user_id
           WHERE orders.id = $1
+          FOR UPDATE
           `,
           [req.params.id]
         );
 
-
       const order =
         result.rows[0];
 
-
       if (!order) {
+        await client.query(
+          "ROLLBACK"
+        );
 
         return res.status(404).json({
           error:
@@ -667,10 +836,18 @@ router.post(
         });
       }
 
-
+      /*
+       * Publishing requires:
+       * 1. READY state
+       * 2. verified payment
+       * 3. Razorpay order/payment IDs
+       */
       if (
         order.status !== "READY"
       ) {
+        await client.query(
+          "ROLLBACK"
+        );
 
         return res.status(409).json({
           error:
@@ -678,6 +855,50 @@ router.post(
         });
       }
 
+      if (
+        order.payment_status !== "PAID"
+      ) {
+        await client.query(
+          "ROLLBACK"
+        );
+
+        return res.status(409).json({
+          error:
+            "Verified payment is required before publishing.",
+        });
+      }
+
+      if (
+        !order.razorpay_order_id ||
+        !order.razorpay_payment_id
+      ) {
+        await client.query(
+          "ROLLBACK"
+        );
+
+        return res.status(409).json({
+          error:
+            "Verified payment information is missing.",
+        });
+      }
+
+      /*
+       * Do not generate a second memory slug if a publish request is
+       * repeated after the order has already been published.
+       */
+      if (
+        order.memory_slug ||
+        order.status === "PUBLISHED"
+      ) {
+        await client.query(
+          "ROLLBACK"
+        );
+
+        return res.status(409).json({
+          error:
+            "This memory has already been published.",
+        });
+      }
 
       const memorySlug =
         await buildUniqueMemorySlug({
@@ -688,30 +909,52 @@ router.post(
             order.memory_title,
         });
 
+      const updateResult =
+        await client.query(
+          `
+          UPDATE orders
+          SET
+            status = 'PUBLISHED',
+            memory_slug = $1,
+            published_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2
+            AND status = 'READY'
+            AND payment_status = 'PAID'
+            AND memory_slug IS NULL
+          `,
+          [
+            memorySlug,
+            order.id,
+          ]
+        );
 
-      await db.query(
-        `
-        UPDATE orders
-        SET
-          status = 'PUBLISHED',
-          memory_slug = $1,
-          published_at = CURRENT_TIMESTAMP,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2
-        `,
-        [
-          memorySlug,
-          order.id,
-        ]
+      if (
+        updateResult.rowCount !== 1
+      ) {
+        throw new Error(
+          "Publish update failed."
+        );
+      }
+
+      await client.query(
+        "COMMIT"
       );
-
 
       return res.json({
         ok: true,
         memorySlug,
       });
-
     } catch (err) {
+      if (client) {
+        try {
+          await client.query(
+            "ROLLBACK"
+          );
+        } catch {
+          // Ignore rollback failure.
+        }
+      }
 
       console.error(
         "Admin publish error:",
@@ -722,6 +965,10 @@ router.post(
         error:
           "Unable to publish memory.",
       });
+    } finally {
+      if (client) {
+        client.release();
+      }
     }
   }
 );
