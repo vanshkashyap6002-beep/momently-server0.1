@@ -1,5 +1,5 @@
 const express = require("express");
-
+const { randomUUID } = require("crypto");
 const db = require("../lib/db");
 
 const {
@@ -231,12 +231,7 @@ router.post(
       const values =
         getTemplateValues(req.body);
 
-      if (!values.id) {
-        return res.status(400).json({
-          error:
-            "Template ID is required.",
-        });
-      }
+      const templateId = randomUUID();
 
       if (!values.slug) {
         return res.status(400).json({
@@ -332,7 +327,7 @@ router.post(
           created_at
         `,
         [
-          values.id,
+          templateId,
           values.slug,
           values.name,
           values.occasion,
