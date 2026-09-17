@@ -28,20 +28,13 @@ router.post("/login", async (req, res) => {
   const { email, password } = req.body || {};
 
   try {
-    const normalizedEmail = String(
-      email || ""
-    )
+    const normalizedEmail = String(email || "")
       .trim()
       .toLowerCase();
 
-    const normalizedPassword = String(
-      password || ""
-    );
+    const normalizedPassword = String(password || "");
 
-    if (
-      !normalizedEmail ||
-      !normalizedPassword
-    ) {
+    if (!normalizedEmail || !normalizedPassword) {
       return res.status(400).json({
         error: "Email and password are required.",
       });
@@ -226,96 +219,98 @@ router.get(
 
       const rows = result.rows;
 
-for (const row of rows) {
-  const mediaResult = await db.query(
-    `
-      SELECT
-        id,
-        filename,
-        mime_type,
-        size_bytes
-      FROM media
-      WHERE order_id = $1
-      ORDER BY sort_order
-    `,
-    [row.id]
-  );
+      for (const row of rows) {
+        const mediaResult = await db.query(
+          `
+            SELECT
+              id,
+              filename,
+              mime_type,
+              size_bytes
+            FROM media
+            WHERE order_id = $1
+            ORDER BY sort_order
+          `,
+          [row.id]
+        );
 
-  const timelineResult = await db.query(
-    `
-      SELECT
-        id,
-        entry_date,
-        title,
-        description,
-        sort_order
-      FROM memory_timeline
-      WHERE order_id = $1
-      ORDER BY sort_order
-    `,
-    [row.id]
-  );
+        const timelineResult = await db.query(
+          `
+            SELECT
+              id,
+              entry_date,
+              title,
+              description,
+              sort_order
+            FROM memory_timeline
+            WHERE order_id = $1
+            ORDER BY sort_order
+          `,
+          [row.id]
+        );
 
-  row.media = mediaResult.rows.map((media) => ({
-    id: media.id,
-    filename: media.filename,
-    mimeType: media.mime_type,
-    sizeBytes: media.size_bytes,
-  }));
+        row.media = mediaResult.rows.map((media) => ({
+          id: media.id,
+          filename: media.filename,
+          mimeType: media.mime_type,
+          sizeBytes: media.size_bytes,
+        }));
 
-  row.timeline = timelineResult.rows.map((entry) => ({
-    id: entry.id,
-    date: entry.entry_date,
-    title: entry.title,
-    description: entry.description,
-    sortOrder: entry.sort_order,
-  }));
-}
+        row.timeline = timelineResult.rows.map((entry) => ({
+          id: entry.id,
+          date: entry.entry_date,
+          title: entry.title,
+          description: entry.description,
+          sortOrder: entry.sort_order,
+        }));
+      }
 
-const orders = rows.map((row) => ({
-  id: row.id,
-  userId: row.user_id,
-  templateId: row.template_id,
+      const orders = rows.map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        templateId: row.template_id,
 
-  customerName: row.customer_name,
-  customerEmail: row.customer_email,
-  templateName: row.template_name,
+        customerName: row.customer_name,
+        customerEmail: row.customer_email,
+        templateName: row.template_name,
 
-  recipientName: row.recipient_name,
-  memoryTitle: row.memory_title,
-  memorySubtitle: row.memory_subtitle,
-  importantDate: row.important_date,
-  personalMessage: row.personal_message,
+        recipientName: row.recipient_name,
+        memoryTitle: row.memory_title,
+        memorySubtitle: row.memory_subtitle,
+        importantDate: row.important_date,
+        personalMessage: row.personal_message,
 
-  memoryClosingMessage: row.memory_closing_message,
-  memorySongTitle: row.memory_song_title,
-  memorySongArtist: row.memory_song_artist,
+        memoryClosingMessage:
+          row.memory_closing_message,
 
-  memorySlug: row.memory_slug,
+        memorySongTitle:
+          row.memory_song_title,
 
-  amount: row.amount,
-  status: row.status,
-  paymentStatus: row.payment_status,
+        memorySongArtist:
+          row.memory_song_artist,
 
-  razorpayOrderId: row.razorpay_order_id,
-  razorpayPaymentId: row.razorpay_payment_id,
+        memorySlug: row.memory_slug,
 
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-  publishedAt: row.published_at,
+        amount: row.amount,
+        status: row.status,
+        paymentStatus: row.payment_status,
 
-  media: row.media,
-  timeline: row.timeline,
-}));
+        razorpayOrderId:
+          row.razorpay_order_id,
 
-return res.json({
-  orders,
-});
+        razorpayPaymentId:
+          row.razorpay_payment_id,
 
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        publishedAt: row.published_at,
 
+        media: row.media,
+        timeline: row.timeline,
+      }));
 
       return res.json({
-        orders: rows,
+        orders,
       });
     } catch (err) {
       console.error(
@@ -341,54 +336,121 @@ router.get(
   requireAdmin,
   async (req, res) => {
     try {
-      const result =
-        await db.query(
-          `
-          SELECT *
+      const result = await db.query(
+        `
+          SELECT
+            orders.*,
+            users.full_name AS customer_name,
+            users.email AS customer_email,
+            templates.name AS template_name
           FROM orders
-          WHERE id = $1
-          `,
-          [req.params.id]
-        );
+          JOIN users
+            ON users.id = orders.user_id
+          JOIN templates
+            ON templates.id = orders.template_id
+          WHERE orders.id = $1
+        `,
+        [req.params.id]
+      );
 
-      const order =
-        result.rows[0];
+      const row = result.rows[0];
 
-      if (!order) {
+      if (!row) {
         return res.status(404).json({
-          error:
-            "Order not found.",
+          error: "Order not found.",
         });
       }
 
-      const mediaResult =
-        await db.query(
-          `
-          SELECT *
+      const mediaResult = await db.query(
+        `
+          SELECT
+            id,
+            filename,
+            mime_type,
+            size_bytes
           FROM media
           WHERE order_id = $1
           ORDER BY sort_order
-          `,
-          [order.id]
-        );
+        `,
+        [row.id]
+      );
 
-      const timelineResult =
-        await db.query(
-          `
-          SELECT *
+      const timelineResult = await db.query(
+        `
+          SELECT
+            id,
+            entry_date,
+            title,
+            description,
+            sort_order
           FROM memory_timeline
           WHERE order_id = $1
           ORDER BY sort_order
-          `,
-          [order.id]
-        );
+        `,
+        [row.id]
+      );
+
+      const media = mediaResult.rows.map((media) => ({
+        id: media.id,
+        filename: media.filename,
+        mimeType: media.mime_type,
+        sizeBytes: media.size_bytes,
+      }));
+
+      const timeline = timelineResult.rows.map((entry) => ({
+        id: entry.id,
+        date: entry.entry_date,
+        title: entry.title,
+        description: entry.description,
+        sortOrder: entry.sort_order,
+      }));
+
+      const order = {
+        id: row.id,
+        userId: row.user_id,
+        templateId: row.template_id,
+
+        customerName: row.customer_name,
+        customerEmail: row.customer_email,
+        templateName: row.template_name,
+
+        recipientName: row.recipient_name,
+        memoryTitle: row.memory_title,
+        memorySubtitle: row.memory_subtitle,
+        importantDate: row.important_date,
+        personalMessage: row.personal_message,
+
+        memoryClosingMessage:
+          row.memory_closing_message,
+
+        memorySongTitle:
+          row.memory_song_title,
+
+        memorySongArtist:
+          row.memory_song_artist,
+
+        memorySlug: row.memory_slug,
+
+        amount: row.amount,
+        status: row.status,
+        paymentStatus: row.payment_status,
+
+        razorpayOrderId:
+          row.razorpay_order_id,
+
+        razorpayPaymentId:
+          row.razorpay_payment_id,
+
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        publishedAt: row.published_at,
+
+        media,
+        timeline,
+      };
 
       return res.json({
         order,
-        media:
-          mediaResult.rows,
-        timeline:
-          timelineResult.rows,
       });
     } catch (err) {
       console.error(
@@ -397,8 +459,7 @@ router.get(
       );
 
       return res.status(500).json({
-        error:
-          "Unable to load order.",
+        error: "Unable to load order.",
       });
     }
   }
@@ -408,7 +469,7 @@ router.get(
 // ============================================================
 // UPDATE ORDER STATUS
 // ============================================================
-//
+
 // IMPORTANT:
 // PAID must ONLY be produced by a verified payment flow.
 // Admin cannot manually manufacture a PAID state.
@@ -463,13 +524,14 @@ router.patch(
        * This prevents concurrent admin changes from racing with payment
        * verification/webhook updates.
        */
+
       const result =
         await client.query(
           `
-          SELECT *
-          FROM orders
-          WHERE id = $1
-          FOR UPDATE
+            SELECT *
+            FROM orders
+            WHERE id = $1
+            FOR UPDATE
           `,
           [req.params.id]
         );
@@ -491,6 +553,7 @@ router.patch(
       /*
        * A paid order must never be moved backwards to PENDING.
        */
+
       if (
         status === "PENDING" &&
         order.payment_status === "PAID"
@@ -510,6 +573,7 @@ router.patch(
        *
        * Admin cannot simply choose PAID anymore.
        */
+
       if (
         [
           "IN_PROGRESS",
@@ -535,6 +599,7 @@ router.patch(
        * An order that is already published should not be manually moved
        * backwards into an earlier workflow state.
        */
+
       if (
         order.status === "PUBLISHED" &&
         status !== "PUBLISHED"
@@ -552,6 +617,7 @@ router.patch(
       /*
        * READY and PUBLISHED require the order to have payment information.
        */
+
       if (
         [
           "READY",
@@ -576,11 +642,11 @@ router.patch(
       const updateResult =
         await client.query(
           `
-          UPDATE orders
-          SET
-            status = $1,
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = $2
+            UPDATE orders
+            SET
+              status = $1,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
           `,
           [
             status,
@@ -653,13 +719,26 @@ router.put(
       timeline,
     } = req.body || {};
 
+    let client;
+
     try {
+      client =
+        await db.pool.connect();
+
+      await client.query("BEGIN");
+
+      /*
+       * Lock the order so the memory update cannot race with
+       * another admin workflow operation.
+       */
+
       const result =
-        await db.query(
+        await client.query(
           `
-          SELECT *
-          FROM orders
-          WHERE id = $1
+            SELECT *
+            FROM orders
+            WHERE id = $1
+            FOR UPDATE
           `,
           [req.params.id]
         );
@@ -668,23 +747,32 @@ router.put(
         result.rows[0];
 
       if (!order) {
+        await client.query(
+          "ROLLBACK"
+        );
+
         return res.status(404).json({
           error:
             "Order not found.",
         });
       }
 
-      await db.query(
+      /*
+       * Update memory fields inside the same transaction
+       * as the timeline replacement.
+       */
+
+      await client.query(
         `
-        UPDATE orders
-        SET
-          memory_title = $1,
-          memory_subtitle = $2,
-          memory_closing_message = $3,
-          memory_song_title = $4,
-          memory_song_artist = $5,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = $6
+          UPDATE orders
+          SET
+            memory_title = $1,
+            memory_subtitle = $2,
+            memory_closing_message = $3,
+            memory_song_title = $4,
+            memory_song_artist = $5,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $6
         `,
         [
           memoryTitle || null,
@@ -696,37 +784,33 @@ router.put(
         ]
       );
 
-      const client =
-        await db.pool.connect();
+      /*
+       * Replace existing timeline entries.
+       */
 
-      try {
-        await client.query(
-          "BEGIN"
-        );
+      await client.query(
+        `
+          DELETE FROM memory_timeline
+          WHERE order_id = $1
+        `,
+        [order.id]
+      );
+
+      const entries =
+        Array.isArray(timeline)
+          ? timeline
+          : [];
+
+      for (
+        let i = 0;
+        i < entries.length;
+        i++
+      ) {
+        const entry =
+          entries[i] || {};
 
         await client.query(
           `
-          DELETE FROM memory_timeline
-          WHERE order_id = $1
-          `,
-          [order.id]
-        );
-
-        const entries =
-          Array.isArray(timeline)
-            ? timeline
-            : [];
-
-        for (
-          let i = 0;
-          i < entries.length;
-          i++
-        ) {
-          const entry =
-            entries[i] || {};
-
-          await client.query(
-            `
             INSERT INTO memory_timeline
             (
               id,
@@ -744,35 +828,36 @@ router.put(
               $5,
               $6
             )
-            `,
-            [
-              crypto.randomUUID(),
-              order.id,
-              entry.entryDate || null,
-              entry.title || null,
-              entry.description || null,
-              i,
-            ]
-          );
-        }
-
-        await client.query(
-          "COMMIT"
+          `,
+          [
+            crypto.randomUUID(),
+            order.id,
+            entry.entryDate || null,
+            entry.title || null,
+            entry.description || null,
+            i,
+          ]
         );
-      } catch (err) {
-        await client.query(
-          "ROLLBACK"
-        );
-
-        throw err;
-      } finally {
-        client.release();
       }
+
+      await client.query(
+        "COMMIT"
+      );
 
       return res.json({
         ok: true,
       });
     } catch (err) {
+      if (client) {
+        try {
+          await client.query(
+            "ROLLBACK"
+          );
+        } catch {
+          // Ignore rollback failure.
+        }
+      }
+
       console.error(
         "Admin memory save error:",
         err
@@ -782,6 +867,10 @@ router.put(
         error:
           "Unable to save memory.",
       });
+    } finally {
+      if (client) {
+        client.release();
+      }
     }
   }
 );
@@ -807,17 +896,18 @@ router.post(
        * Lock the order during the publish transition so another admin
        * request cannot publish the same order simultaneously.
        */
+
       const result =
         await client.query(
           `
-          SELECT
-            orders.*,
-            users.email AS customer_email
-          FROM orders
-          JOIN users
-            ON users.id = orders.user_id
-          WHERE orders.id = $1
-          FOR UPDATE
+            SELECT
+              orders.*,
+              users.email AS customer_email
+            FROM orders
+            JOIN users
+              ON users.id = orders.user_id
+            WHERE orders.id = $1
+            FOR UPDATE
           `,
           [req.params.id]
         );
@@ -842,6 +932,7 @@ router.post(
        * 2. verified payment
        * 3. Razorpay order/payment IDs
        */
+
       if (
         order.status !== "READY"
       ) {
@@ -886,6 +977,7 @@ router.post(
        * Do not generate a second memory slug if a publish request is
        * repeated after the order has already been published.
        */
+
       if (
         order.memory_slug ||
         order.status === "PUBLISHED"
@@ -912,16 +1004,16 @@ router.post(
       const updateResult =
         await client.query(
           `
-          UPDATE orders
-          SET
-            status = 'PUBLISHED',
-            memory_slug = $1,
-            published_at = CURRENT_TIMESTAMP,
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = $2
-            AND status = 'READY'
-            AND payment_status = 'PAID'
-            AND memory_slug IS NULL
+            UPDATE orders
+            SET
+              status = 'PUBLISHED',
+              memory_slug = $1,
+              published_at = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+              AND status = 'READY'
+              AND payment_status = 'PAID'
+              AND memory_slug IS NULL
           `,
           [
             memorySlug,
