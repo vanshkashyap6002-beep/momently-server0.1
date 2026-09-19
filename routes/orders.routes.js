@@ -69,7 +69,6 @@ async function loadOwnedOrder(req, res) {
   return order;
 }
 
-
 // POST /api/orders
 // { templateSlug } — starts or reuses a draft order.
 router.post("/", requireCustomer, async (req, res) => {
@@ -158,7 +157,6 @@ router.post("/", requireCustomer, async (req, res) => {
   }
 });
 
-
 // GET /api/orders/:id
 router.get("/:id", requireCustomer, async (req, res) => {
   try {
@@ -177,7 +175,6 @@ router.get("/:id", requireCustomer, async (req, res) => {
     });
   }
 });
-
 
 // PATCH /api/orders/:id
 // Customer information step.
@@ -244,7 +241,6 @@ router.patch("/:id", requireCustomer, async (req, res) => {
   }
 });
 
-
 // GET /api/orders
 // Current customer's own orders, most recent first.
 router.get("/", requireCustomer, async (req, res) => {
@@ -281,7 +277,6 @@ router.get("/", requireCustomer, async (req, res) => {
     });
   }
 });
-
 
 // POST /api/orders/:id/media
 // Multipart upload, up to 10 files at once.
@@ -325,8 +320,43 @@ router.post(
       for (let i = 0; i < req.files.length; i++) {
         const file = req.files[i];
 
+        /*
+         * Step 2 security:
+         *
+         * Do not trust the MIME type or file extension supplied
+         * by the browser. Inspect the actual file bytes.
+         */
+        const detectedType =
+          storage.detectFileType(file.buffer);
+
+        if (!detectedType) {
+          return res.status(400).json({
+            error:
+              `Invalid or unsupported file: ${file.originalname}`,
+          });
+        }
+
+        /*
+         * The detected type must also match the MIME type supplied
+         * by the client. This gives us two independent checks.
+         */
+        if (detectedType.mimeType !== file.mimetype) {
+          return res.status(400).json({
+            error:
+              `File type does not match its declared MIME type: ${file.originalname}`,
+          });
+        }
+
+        /*
+         * Storage generates the extension from the detected type.
+         * The user's original filename extension is never trusted.
+         */
         const storedPath =
-          storage.saveFile(order.id, file);
+          storage.saveFile(
+            order.id,
+            file,
+            detectedType
+          );
 
         const id = crypto.randomUUID();
 
@@ -351,7 +381,7 @@ router.post(
             order.id,
             file.originalname,
             storedPath,
-            file.mimetype,
+            detectedType.mimeType,
             file.size,
             sortOrder,
           ]
@@ -360,7 +390,7 @@ router.post(
         created.push({
           id,
           filename: file.originalname,
-          mimeType: file.mimetype,
+          mimeType: detectedType.mimeType,
           sizeBytes: file.size,
         });
       }
@@ -377,7 +407,6 @@ router.post(
     }
   }
 );
-
 
 // GET /api/orders/:id/media
 // Metadata only; bytes come from /api/media/:id/file.
@@ -422,7 +451,6 @@ router.get(
     }
   }
 );
-
 
 // DELETE /api/orders/:id/media/:mediaId
 router.delete(
@@ -474,6 +502,5 @@ router.delete(
     }
   }
 );
-
 
 module.exports = router;
