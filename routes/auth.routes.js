@@ -308,8 +308,16 @@ router.get("/google/callback", async (req, res) => {
       cookieOptions
     );
 
+    const frontendBaseUrl = process.env.FRONTEND_BASE_URL;
+
+    if (!frontendBaseUrl) {
+      throw new Error("FRONTEND_BASE_URL is not configured.");
+    }
+
+    const nextPath = saved.nextUrl || "/templates.html";
+
     return res.redirect(
-      saved.nextUrl || "/templates.html"
+      `${frontendBaseUrl}${nextPath.startsWith("/") ? nextPath : `/${nextPath}`}`
     );
   } catch (err) {
     console.error(
