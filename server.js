@@ -1,7 +1,6 @@
 require("./lib/env");
 require("./scripts/seed-templates");
 
-const path = require("path");
 const express = require("express");
 const cookieParser = require("cookie-parser");
 
@@ -16,7 +15,6 @@ const profileRoutes = require("./routes/profile.routes");
 
 const app = express();
 
-const FRONTEND_ROOT = path.join(__dirname, "..");
 const PORT = process.env.PORT || 3000;
 
 // ---------------------------------------------------------------------------
@@ -109,21 +107,7 @@ app.get("/api/health", (_req, res) => {
 
 // /memory/:slug is dynamic, so serve the same memory shell.
 // The frontend JavaScript then loads the actual memory data.
-app.get("/memory/:slug", (_req, res) => {
-  res.sendFile(
-    path.join(FRONTEND_ROOT, "memory", "memory.html")
-  );
-});
 
-// ---------------------------------------------------------------------------
-// Frontend static files
-// ---------------------------------------------------------------------------
-
-app.use(
-  express.static(FRONTEND_ROOT, {
-    extensions: ["html"]
-  })
-);
 
 // ---------------------------------------------------------------------------
 // 404
