@@ -34,6 +34,7 @@ app.use(cookieParser());
 // We also allow localhost so development continues to work.
 const allowedOrigins = [
   "https://momently-frontend-stage-1.vercel.app",
+  "https://momently-frontend-stage-1-618x2ngxt.vercel.app",
   "http://localhost:5500",
   "http://127.0.0.1:5500",
   "http://localhost:3000",
