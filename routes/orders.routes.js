@@ -462,6 +462,24 @@ router.delete(
 
       if (!order) return;
 
+      /*
+       * Security:
+       * Media can only be deleted while the order is still
+       * an unpaid PENDING draft.
+       *
+       * This prevents a customer from deleting media after
+       * payment or after the order has moved forward in the
+       * workflow.
+       */
+      if (
+        order.status !== "PENDING" ||
+        order.payment_status === "PAID"
+      ) {
+        return res.status(409).json({
+          error: "This order's media can no longer be deleted.",
+        });
+      }
+
       const mediaResult = await db.query(
         `
         SELECT *
