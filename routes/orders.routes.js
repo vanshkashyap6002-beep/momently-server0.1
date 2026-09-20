@@ -21,6 +21,10 @@ const upload = multer({
   limits: {
     fileSize: 100 * 1024 * 1024,
     files: 10,
+    fields: 5,
+    parts: 15,
+    fieldSize: 64 * 1024,
+    headerPairs: 2000,
   },
   fileFilter(_req, file, cb) {
     if (!ALLOWED_MIME.has(file.mimetype)) {
@@ -30,7 +34,86 @@ const upload = multer({
     cb(null, true);
   },
 });
+function handleMediaUpload(req, res, next) {
+  upload.array("files", 10)(
+    req,
+    res,
+    (err) => {
+      if (!err) {
+        return next();
+      }
 
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(413).json({
+            error:
+              "A file is too large. Each file must be 100 MB or smaller.",
+          });
+        }
+
+        if (err.code === "LIMIT_FILE_COUNT") {
+          return res.status(413).json({
+            error:
+              "Too many files. You can upload a maximum of 10 files at once.",
+          });
+        }
+
+        if (err.code === "LIMIT_PART_COUNT") {
+          return res.status(413).json({
+            error:
+              "Too much multipart data was sent.",
+          });
+        }
+
+        if (err.code === "LIMIT_FIELD_COUNT") {
+          return res.status(413).json({
+            error:
+              "Too many form fields were sent.",
+          });
+        }
+
+        if (err.code === "LIMIT_FIELD_SIZE") {
+          return res.status(413).json({
+            error:
+              "A form field is too large.",
+          });
+        }
+
+        if (err.code === "LIMIT_UNEXPECTED_FILE") {
+          return res.status(400).json({
+            error:
+              "Unexpected upload field.",
+          });
+        }
+
+        return res.status(400).json({
+          error:
+            "Invalid upload request.",
+        });
+      }
+
+      if (
+        err &&
+        err.message === "Unsupported file type."
+      ) {
+        return res.status(400).json({
+          error:
+            "Unsupported file type.",
+        });
+      }
+
+      console.error(
+        "Upload middleware error:",
+        err
+      );
+
+      return res.status(400).json({
+        error:
+          "Invalid upload request.",
+      });
+    }
+  );
+}
 function toPublicOrder(row) {
   return {
     id: row.id,
@@ -283,7 +366,7 @@ router.get("/", requireCustomer, async (req, res) => {
 router.post(
   "/:id/media",
   requireCustomer,
-  upload.array("files", 10),
+  handleMediaUpload,
   async (req, res) => {
     try {
       const order = await loadOwnedOrder(req, res);
