@@ -2,6 +2,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const db = require("../lib/db");
 const crypto = require("crypto");
+const { checkRateLimit } = require("../lib/rateLimit");
 
 const {
   signAdminToken,
@@ -19,7 +20,6 @@ const {
 
 const router = express.Router();
 
-
 // ============================================================
 // ADMIN LOGIN
 // ============================================================
@@ -28,6 +28,19 @@ router.post("/login", async (req, res) => {
   const { email, password } = req.body || {};
 
   try {
+    if (
+      !checkRateLimit(
+        `admin-login:${String(email || "").toLowerCase()}`,
+        10,
+        5 * 60 * 1000
+      )
+    ) {
+      return res.status(429).json({
+        error:
+          "Too many admin login attempts. Please wait a few minutes and try again.",
+      });
+    }
+
     const normalizedEmail = String(email || "")
       .trim()
       .toLowerCase();
@@ -92,7 +105,6 @@ router.post("/login", async (req, res) => {
   }
 });
 
-
 // ============================================================
 // CHECK CURRENT ADMIN SESSION
 // ============================================================
@@ -111,7 +123,6 @@ router.get(
   }
 );
 
-
 // ============================================================
 // ADMIN LOGOUT
 // ============================================================
@@ -129,7 +140,6 @@ router.post(
     });
   }
 );
-
 
 // ============================================================
 // ORDERS
@@ -326,7 +336,6 @@ router.get(
   }
 );
 
-
 // ============================================================
 // SINGLE ORDER
 // ============================================================
@@ -465,7 +474,6 @@ router.get(
   }
 );
 
-
 // ============================================================
 // UPDATE ORDER STATUS
 // ============================================================
@@ -473,7 +481,7 @@ router.get(
 // IMPORTANT:
 // PAID must ONLY be produced by a verified payment flow.
 // Admin cannot manually manufacture a PAID state.
-//
+
 // Allowed manual workflow:
 //
 // PENDING
@@ -701,7 +709,6 @@ router.patch(
   }
 );
 
-
 // ============================================================
 // SAVE MEMORY
 // ============================================================
@@ -874,7 +881,6 @@ router.put(
     }
   }
 );
-
 
 // ============================================================
 // PUBLISH MEMORY
@@ -1064,6 +1070,5 @@ router.post(
     }
   }
 );
-
 
 module.exports = router;
