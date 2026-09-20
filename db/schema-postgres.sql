@@ -115,3 +115,7 @@ CREATE TABLE IF NOT EXISTS memory_timeline (
 
 CREATE INDEX IF NOT EXISTS idx_timeline_order
 ON memory_timeline(order_id, sort_order);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_one_pending_per_user_template
+ON orders(user_id, template_id)
+WHERE status = 'PENDING';

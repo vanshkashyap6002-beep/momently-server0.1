@@ -232,11 +232,35 @@ router.post("/", requireCustomer, async (req, res) => {
       order: toPublicOrder(order),
     });
   } catch (err) {
-    console.error("Create order error:", err);
+  if (err && err.code === "23505") {
+    const existingResult = await db.query(
+      `
+        SELECT *
+        FROM orders
+        WHERE user_id = $1
+          AND template_id = $2
+          AND status = 'PENDING'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      [req.user.id, template.id]
+    );
 
-    return res.status(500).json({
-      error: "Unable to create order.",
-    });
+    const existing = existingResult.rows[0];
+
+    if (existing) {
+      return res.status(200).json({
+        order: toPublicOrder(existing),
+      });
+    }
+  }
+
+  console.error("Create order error:", err);
+
+  return res.status(500).json({
+    error: "Unable to create order.",
+  });
+
   }
 });
 
