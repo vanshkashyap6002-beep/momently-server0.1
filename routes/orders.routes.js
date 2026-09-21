@@ -439,22 +439,20 @@ router.post(
             storage.detectFileType(file.buffer);
 
           if (!detectedType) {
-            return res.status(400).json({
-              error:
-                `Invalid or unsupported file: ${file.originalname}`,
-            });
-          }
+  throw new Error(
+    `Invalid or unsupported file: ${file.originalname}`
+  );
+}
 
           /*
            * The detected type must also match the MIME type supplied
            * by the client. This gives us two independent checks.
            */
           if (detectedType.mimeType !== file.mimetype) {
-            return res.status(400).json({
-              error:
-                `File type does not match its declared MIME type: ${file.originalname}`,
-            });
-          }
+  throw new Error(
+    `File type does not match its declared MIME type: ${file.originalname}`
+  );
+}
 
           /*
            * Storage generates the extension from the detected type.
