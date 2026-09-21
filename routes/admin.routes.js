@@ -3,6 +3,9 @@ const bcrypt = require("bcryptjs");
 const db = require("../lib/db");
 const crypto = require("crypto");
 const { checkRateLimit } = require("../lib/rateLimit");
+const {
+  sendMemoryPublishedEmail,
+} = require("../lib/mailer");
 
 const {
   signAdminToken,
@@ -1034,15 +1037,47 @@ router.post(
           "Publish update failed."
         );
       }
+await client.query(
+"COMMIT"
+);
 
-      await client.query(
-        "COMMIT"
-      );
+let emailDelivered = false;
 
-      return res.json({
-        ok: true,
-        memorySlug,
-      });
+try {
+  const frontendBaseUrl =
+    process.env.FRONTEND_BASE_URL;
+
+  if (!frontendBaseUrl) {
+    throw new Error(
+      "FRONTEND_BASE_URL is not configured."
+    );
+  }
+
+  const memoryUrl =
+    `${frontendBaseUrl.replace(/\/+$/, "")}/memory/${encodeURIComponent(memorySlug)}`;
+
+  const emailResult =
+    await sendMemoryPublishedEmail({
+      to: order.customer_email,
+      recipientName: order.recipient_name,
+      memoryTitle: order.memory_title,
+      memoryUrl,
+    });
+
+  emailDelivered =
+    emailResult.delivered === true;
+} catch (emailError) {
+  console.error(
+    "Memory published, but publication email failed:",
+    emailError
+  );
+}
+
+return res.json({
+  ok: true,
+  memorySlug,
+  emailDelivered,
+});
     } catch (err) {
       if (client) {
         try {
