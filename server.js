@@ -33,6 +33,8 @@ app.use(cookieParser());
 //
 // We also allow localhost so development continues to work.
 const allowedOrigins = [
+  "https://chermo.in",
+"https://www.chermo.in",
   "https://momently-frontend-stage-1.vercel.app",
   "https://momently-frontend-stage-1-618x2ngxt.vercel.app",
   "http://localhost:5500",
