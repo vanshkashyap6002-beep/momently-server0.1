@@ -5,12 +5,15 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT,
     google_id TEXT UNIQUE,
     avatar_url TEXT,
+    phone TEXT,
     date_of_birth TEXT,
     gender TEXT,
     relationship_status TEXT,
     bio TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
