@@ -407,6 +407,7 @@ router.get(
         filename: media.filename,
         mimeType: media.mime_type,
         sizeBytes: media.size_bytes,
+        url: `/api/media/${encodeURIComponent(media.id)}/file`,
       }));
 
       const timeline = timelineResult.rows.map((entry) => ({
@@ -1042,11 +1043,12 @@ await client.query(
 );
 
 let emailDelivered = false;
+const frontendBaseUrl = process.env.FRONTEND_BASE_URL;
+const memoryUrl = frontendBaseUrl
+  ? `${frontendBaseUrl.replace(/\/+$/, "")}/memory/${encodeURIComponent(memorySlug)}`
+  : null;
 
 try {
-  const frontendBaseUrl =
-    process.env.FRONTEND_BASE_URL;
-
   if (!frontendBaseUrl) {
     throw new Error(
       "FRONTEND_BASE_URL is not configured."
@@ -1076,6 +1078,7 @@ try {
 return res.json({
   ok: true,
   memorySlug,
+  memoryUrl,
   emailDelivered,
 });
     } catch (err) {
