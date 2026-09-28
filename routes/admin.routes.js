@@ -17,9 +17,7 @@ const {
   requireAdmin,
 } = require("../middleware/adminAuth");
 
-const {
-  buildUniqueMemorySlug,
-} = require("../lib/slug");
+const { parseMemoryLink } = require("../lib/memoryLink");
 
 const router = express.Router();
 
@@ -354,7 +352,8 @@ router.get(
             orders.*,
             users.full_name AS customer_name,
             users.email AS customer_email,
-            templates.name AS template_name
+            templates.name AS template_name,
+            templates.accent AS accent
           FROM orders
           JOIN users
             ON users.id = orders.user_id
@@ -426,6 +425,7 @@ router.get(
         customerName: row.customer_name,
         customerEmail: row.customer_email,
         templateName: row.template_name,
+        accent: row.accent,
 
         recipientName: row.recipient_name,
         memoryTitle: row.memory_title,
@@ -486,17 +486,16 @@ router.get(
 // PAID must ONLY be produced by a verified payment flow.
 // Admin cannot manually manufacture a PAID state.
 
-// Allowed manual workflow:
+// Allowed manual status workflow:
 //
 // PENDING
 //   ↓
 // IN_PROGRESS
 //   ↓
 // READY
-//   ↓
-// PUBLISHED
 //
-// But IN_PROGRESS / READY / PUBLISHED require verified payment.
+// PUBLISHED is only set by the dedicated publish route below.
+// IN_PROGRESS / READY require verified payment.
 // ============================================================
 
 router.patch(
@@ -511,7 +510,6 @@ router.patch(
       "PENDING",
       "IN_PROGRESS",
       "READY",
-      "PUBLISHED",
     ];
 
     if (
@@ -894,6 +892,13 @@ router.post(
   "/orders/:id/publish",
   requireAdmin,
   async (req, res) => {
+    const suppliedMemoryLink = parseMemoryLink(req.body?.memoryLink);
+    if (!suppliedMemoryLink) {
+      return res.status(400).json({
+        error: "Enter a valid https://chermo.in/memory/<slug> link.",
+      });
+    }
+
     let client;
 
     try {
@@ -1002,14 +1007,17 @@ router.post(
         });
       }
 
-      const memorySlug =
-        await buildUniqueMemorySlug({
-          recipientName:
-            order.recipient_name,
-
-          memoryTitle:
-            order.memory_title,
+      const memorySlug = suppliedMemoryLink.slug;
+      const existingSlug = await client.query(
+        "SELECT id FROM orders WHERE memory_slug = $1 LIMIT 1",
+        [memorySlug]
+      );
+      if (existingSlug.rows.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          error: "That memory link is already in use. Choose a different slug.",
         });
+      }
 
       const updateResult =
         await client.query(
@@ -1043,21 +1051,9 @@ await client.query(
 );
 
 let emailDelivered = false;
-const frontendBaseUrl = process.env.FRONTEND_BASE_URL;
-const memoryUrl = frontendBaseUrl
-  ? `${frontendBaseUrl.replace(/\/+$/, "")}/memory/${encodeURIComponent(memorySlug)}`
-  : null;
+const memoryUrl = suppliedMemoryLink.url;
 
 try {
-  if (!frontendBaseUrl) {
-    throw new Error(
-      "FRONTEND_BASE_URL is not configured."
-    );
-  }
-
-  const memoryUrl =
-    `${frontendBaseUrl.replace(/\/+$/, "")}/memory/${encodeURIComponent(memorySlug)}`;
-
   const emailResult =
     await sendMemoryPublishedEmail({
       to: order.customer_email,
@@ -1096,6 +1092,12 @@ return res.json({
         "Admin publish error:",
         err
       );
+
+      if (err && err.code === "23505") {
+        return res.status(409).json({
+          error: "That memory link is already in use. Choose a different slug.",
+        });
+      }
 
       return res.status(500).json({
         error:
