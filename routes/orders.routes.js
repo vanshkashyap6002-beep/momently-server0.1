@@ -126,6 +126,7 @@ function toPublicOrder(row) {
     paymentStatus: row.payment_status,
     amount: row.amount,
     memorySlug: row.memory_slug,
+    memoryUrl: row.memory_url || null,
     createdAt: row.created_at,
   };
 }

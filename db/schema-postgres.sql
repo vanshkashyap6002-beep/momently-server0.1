@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS orders (
     razorpay_order_id TEXT UNIQUE,
     razorpay_payment_id TEXT UNIQUE,
     memory_slug TEXT UNIQUE,
+    memory_url TEXT,
     memory_subtitle TEXT,
     memory_closing_message TEXT,
     memory_song_title TEXT,

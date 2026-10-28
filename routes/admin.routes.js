@@ -301,6 +301,7 @@ router.get(
           row.memory_song_artist,
 
         memorySlug: row.memory_slug,
+        memoryUrl: row.memory_url || null,
 
         amount: row.amount,
         status: row.status,
@@ -443,6 +444,7 @@ router.get(
           row.memory_song_artist,
 
         memorySlug: row.memory_slug,
+        memoryUrl: row.memory_url || null,
 
         amount: row.amount,
         status: row.status,
@@ -895,7 +897,7 @@ router.post(
     const suppliedMemoryLink = parseMemoryLink(req.body?.memoryLink);
     if (!suppliedMemoryLink) {
       return res.status(400).json({
-        error: "Enter a valid https://chermo.in/memory/<slug> link.",
+        error: "Paste a complete, valid HTTPS URL without spaces or embedded credentials.",
       });
     }
 
@@ -994,7 +996,7 @@ router.post(
        */
 
       if (
-        order.memory_slug ||
+        order.memory_slug || order.memory_url ||
         order.status === "PUBLISHED"
       ) {
         await client.query(
@@ -1026,16 +1028,19 @@ router.post(
             SET
               status = 'PUBLISHED',
               memory_slug = $1,
+              memory_url = $3,
               published_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
             WHERE id = $2
               AND status = 'READY'
               AND payment_status = 'PAID'
               AND memory_slug IS NULL
+              AND memory_url IS NULL
           `,
           [
             memorySlug,
             order.id,
+            suppliedMemoryLink.url,
           ]
         );
 
