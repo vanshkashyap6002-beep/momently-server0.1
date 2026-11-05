@@ -19,8 +19,8 @@ router.get("/:slug", async (req, res) => {
       FROM orders
       JOIN templates
         ON templates.id = orders.template_id
-      WHERE orders.memory_slug = $1
-        AND orders.status = 'PUBLISHED'
+      WHERE (orders.memory_slug = $1 OR orders.id IN (SELECT order_id FROM memory_slug_aliases WHERE slug=$1))
+        AND orders.status = 'PUBLISHED' AND orders.memory_archived_at IS NULL
       LIMIT 1
       `,
       [slug]
@@ -35,11 +35,14 @@ router.get("/:slug", async (req, res) => {
       });
     }
 
+    res.setHeader('Cache-Control', 'no-store');
+    if (!order.memory_slug && order.memory_url) return res.json({redirectUrl: order.memory_url});
+
     const mediaResult = await db.pool.query(
       `
       SELECT
         id,
-        mime_type
+        mime_type, caption
       FROM media
       WHERE order_id = $1
       ORDER BY sort_order
@@ -49,6 +52,7 @@ router.get("/:slug", async (req, res) => {
 
     const media = mediaResult.rows.map((m) => ({
       id: m.id,
+      caption: m.caption || "",
       url: `/api/media/${m.id}/file`,
       isVideo: (m.mime_type || "").startsWith("video/")
     }));
@@ -75,6 +79,8 @@ router.get("/:slug", async (req, res) => {
     return res.json({
       memory: {
         title: order.memory_title,
+        personalMessage: order.personal_message,
+        occasion: order.memory_occasion,
         subtitle: order.memory_subtitle,
         recipientName: order.recipient_name,
         importantDate: order.important_date,

@@ -19,6 +19,7 @@ const router = express.Router();
  * (c) anyone once the order is PUBLISHED.
  */
 router.get("/:id/file", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
   try {
     const result = await db.query(
       `
