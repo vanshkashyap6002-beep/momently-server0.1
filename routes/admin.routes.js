@@ -237,7 +237,7 @@ router.get(
               id,
               filename,
               mime_type,
-              size_bytes, caption
+              size_bytes, to_jsonb(media)->>'caption' AS caption
             FROM media
             WHERE order_id = $1
             ORDER BY sort_order
@@ -380,7 +380,7 @@ router.get(
             id,
             filename,
             mime_type,
-            size_bytes, caption
+            size_bytes, to_jsonb(media)->>'caption' AS caption
           FROM media
           WHERE order_id = $1
           ORDER BY sort_order
