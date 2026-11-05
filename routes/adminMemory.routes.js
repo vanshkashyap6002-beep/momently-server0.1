@@ -3,11 +3,16 @@ const express=require('express');
 const crypto=require('crypto');
 const db=require('../lib/db');
 const {requireAdmin}=require('../middleware/adminAuth');
-const {sendMemoryPublishedEmail}=require('../lib/mailer');
+const {sendMemoryPublishedEmail,verifySmtp}=require('../lib/mailer');
 const {validate,slug}=require('../lib/adminMemoryValidation');
 const {parseMemoryLink}=require('../lib/memoryLink');
 const router=express.Router();
 router.use(requireAdmin);
+router.get('/email/diagnostics',async(req,res)=>{
+ res.set('Cache-Control','no-store');
+ const result=await verifySmtp();
+ return res.status(result.ok?200:503).json(result);
+});
 const multer=require('multer');
 const storage=require('../lib/storage');
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:20*1024*1024,files:10}}).array('files',10);
@@ -24,13 +29,19 @@ async function transaction(req,res,action,fn) {
  } catch(e) {if(c) await c.query('ROLLBACK').catch(()=>{});res.status(e.status || (e.code==='23505'?409:500)).json({error:e.status?e.message:e.code==='23505'?'That slug or request is already in use.':'Unable to complete memory operation.'});return false;}
  finally {c?.release();}
 }
+// Older versions could leave a pending row after the worker exited. Report a
+// stale reservation conservatively without rewriting historical records.
+function attemptStatus(row) {
+ return row.status==='pending' && Date.now()-new Date(row.created_at).getTime()>300000
+  ? 'unknown' : row.status;
+}
 router.get('/orders/:id/lifecycle',async(req,res)=>{
  try {
   const o=(await db.query('SELECT memory_archived_at, memory_occasion, memory_slug, memory_url FROM orders WHERE id=$1',[req.params.id])).rows[0];
   if(!o)return res.status(404).json({error:'Order not found.'});
   const emails=(await db.query('SELECT id,status,created_at FROM memory_email_attempts WHERE order_id=$1 ORDER BY created_at DESC LIMIT 10',[req.params.id])).rows;
   const events=(await db.query('SELECT action,admin_id,created_at FROM memory_admin_events WHERE order_id=$1 ORDER BY created_at DESC LIMIT 20',[req.params.id])).rows;
-  res.json({...o,emails,events});
+  res.json({...o,emails:emails.map(row=>({...row,status:attemptStatus(row)})),events});
  }catch{res.status(500).json({error:'Lifecycle unavailable. Apply the reviewed migration before using these controls.'});}
 });
 router.put('/orders/:id/memory', (req,res)=>{
@@ -87,13 +98,28 @@ router.post('/orders/:id/email',async(req,res)=>{
   const o=(await c.query('SELECT orders.*,users.email AS customer_email FROM orders JOIN users ON users.id=orders.user_id WHERE orders.id=$1 FOR UPDATE OF orders',[req.params.id])).rows[0];
   if(!o)throw fail(404,'Order not found.');
   if(o.status!=='PUBLISHED'||o.memory_archived_at)throw fail(409,'Publish the memory before sending email.');
-  const previous=(await c.query('SELECT status FROM memory_email_attempts WHERE id=$1 AND order_id=$2',[key,o.id])).rows[0];
-  if(previous){await c.query('COMMIT');return res.json({ok:true,status:previous.status});}
+  const previous=(await c.query('SELECT status,created_at FROM memory_email_attempts WHERE id=$1 AND order_id=$2',[key,o.id])).rows[0];
+  if(previous){await c.query('COMMIT');return res.json({ok:true,status:attemptStatus(previous)});}
   if((await c.query("SELECT id FROM memory_email_attempts WHERE order_id=$1 AND created_at>CURRENT_TIMESTAMP-INTERVAL '60 seconds'",[o.id])).rows.length)throw fail(429,'Wait one minute before another email attempt.');
-  await c.query("INSERT INTO memory_email_attempts(id,order_id,admin_id,status) VALUES($1,$2,$3,'pending')",[key,o.id,req.admin.id]);
+  await c.query("INSERT INTO memory_email_attempts(id,order_id,admin_id,status) VALUES($1,$2,$3,'unknown')",[key,o.id,req.admin.id]);
   await c.query('COMMIT');
-  let status='failed';try{const result=await sendMemoryPublishedEmail({to:o.customer_email,recipientName:o.recipient_name,memoryTitle:o.memory_title,memoryUrl:o.memory_url||'https://www.chermo.in/memory/'+o.memory_slug});status=result.delivered?'accepted_by_smtp':'not_sent';}catch{status='unknown';}
-  await db.query('UPDATE memory_email_attempts SET status=$1 WHERE id=$2',[status,key]);
+  // The durable reservation stays unknown if this process stops or finalization fails.
+  c.release();c=null;
+  let status='unknown';
+  try {
+   const result=await sendMemoryPublishedEmail({
+    to:o.customer_email,recipientName:o.recipient_name,memoryTitle:o.memory_title,
+    memoryUrl:o.memory_url||'https://www.chermo.in/memory/'+o.memory_slug
+   });
+   status=result.status;
+  } catch { /* No reliable acceptance result. Keep the reservation. */ }
+  try {
+   const updated=await db.query('UPDATE memory_email_attempts SET status=$1 WHERE id=$2',[status,key]);
+   if(updated.rowCount!==1)throw new Error('Missing reservation');
+  } catch {
+   console.error('SMTP attempt outcome could not be persisted',{status});
+   return res.status(503).json({error:'Email history update failed. Check provider logs before any new send.',status,requestId:key});
+  }
   res.json({ok:true,status});
  }catch(e){if(c)await c.query('ROLLBACK').catch(()=>{});res.status(e.status||500).json({error:e.status?e.message:'Email status unknown. Check history before retrying.'});}finally{c?.release();}
 });
