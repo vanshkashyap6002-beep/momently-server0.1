@@ -3,14 +3,14 @@ const express=require('express');
 const crypto=require('crypto');
 const db=require('../lib/db');
 const {requireAdmin}=require('../middleware/adminAuth');
-const {sendMemoryPublishedEmail,verifySmtp}=require('../lib/mailer');
+const {sendMemoryPublishedEmail,verifyBrevo}=require('../lib/mailer');
 const {validate,slug}=require('../lib/adminMemoryValidation');
 const {parseMemoryLink}=require('../lib/memoryLink');
 const router=express.Router();
 router.use(requireAdmin);
 router.get('/email/diagnostics',async(req,res)=>{
  res.set('Cache-Control','no-store');
- const result=await verifySmtp();
+ const result=await verifyBrevo();
  return res.status(result.ok?200:503).json(result);
 });
 const multer=require('multer');
@@ -106,21 +106,23 @@ router.post('/orders/:id/email',async(req,res)=>{
   // The durable reservation stays unknown if this process stops or finalization fails.
   c.release();c=null;
   let status='unknown';
+  let messageId;
   try {
    const result=await sendMemoryPublishedEmail({
     to:o.customer_email,recipientName:o.recipient_name,memoryTitle:o.memory_title,
     memoryUrl:o.memory_url||'https://www.chermo.in/memory/'+o.memory_slug
    });
    status=result.status;
+   messageId=result.messageId;
   } catch { /* No reliable acceptance result. Keep the reservation. */ }
   try {
    const updated=await db.query('UPDATE memory_email_attempts SET status=$1 WHERE id=$2',[status,key]);
    if(updated.rowCount!==1)throw new Error('Missing reservation');
   } catch {
-   console.error('SMTP attempt outcome could not be persisted',{status});
-   return res.status(503).json({error:'Email history update failed. Check provider logs before any new send.',status,requestId:key});
+   console.error('Brevo attempt outcome could not be persisted',{status});
+   return res.status(503).json({error:'Email history update failed. Check provider logs before any new send.',status,messageId,requestId:key});
   }
-  res.json({ok:true,status});
+  res.json({ok:true,status,messageId});
  }catch(e){if(c)await c.query('ROLLBACK').catch(()=>{});res.status(e.status||500).json({error:e.status?e.message:'Email status unknown. Check history before retrying.'});}finally{c?.release();}
 });
 router.post('/orders/:id/media', (req,res)=>upload(req,res,err=>{
