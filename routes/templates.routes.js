@@ -534,7 +534,7 @@ router.put(
             mood = $6,
             accent = $7,
             price = $8,
-            preview_image_url = COALESCE($15, preview_image_url),
+            ${values.previewImageUrl === undefined ? "" : "preview_image_url = $15,"}
             preview_seed = $9,
             creator_name = $10,
             "shortDescription" = $11,
@@ -574,7 +574,7 @@ router.put(
             values.description,
             values.isEnabled ? 1 : 0,
             templateId,
-            values.previewImageUrl ?? null,
+            ...(values.previewImageUrl === undefined ? [] : [values.previewImageUrl]),
           ]
         );
 
