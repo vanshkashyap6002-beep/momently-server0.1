@@ -31,10 +31,7 @@ function toPublicTemplate(row) {
     description:
       row.description || "",
 
-    previewImageUrl:
-      `https://picsum.photos/seed/${encodeURIComponent(
-        row.preview_seed
-      )}/640/480`,
+    previewImageUrl: row.preview_image_url || "",
 
     creatorName:
       row.creator_name,
@@ -92,6 +89,7 @@ function getTemplateValues(body = {}) {
     price:
       Number(body.price),
 
+    previewImageUrl: body.previewImageUrl,
     previewSeed:
       typeof body.previewSeed === "string"
         ? body.previewSeed.trim()
@@ -138,6 +136,7 @@ router.get("/", async (_req, res) => {
         mood,
         accent,
         price,
+        preview_image_url,
         preview_seed,
         creator_name,
         "shortDescription",
@@ -191,6 +190,7 @@ router.get(
           mood,
           accent,
           price,
+          preview_image_url,
           preview_seed,
           creator_name,
           "shortDescription",
@@ -268,6 +268,15 @@ router.post(
         });
       }
 
+      if (values.previewImageUrl !== undefined && values.previewImageUrl !== "") {
+        try {
+          const url = new URL(values.previewImageUrl);
+          if (typeof values.previewImageUrl !== "string" || url.protocol !== "https:" || url.username || url.password) throw new Error();
+        } catch {
+          return res.status(400).json({ error: "Enter a public HTTPS image URL." });
+        }
+      }
+
       if (!values.previewSeed) {
         return res.status(400).json({
           error:
@@ -287,6 +296,7 @@ router.post(
           mood,
           accent,
           price,
+          preview_image_url,
           preview_seed,
           creator_name,
           "shortDescription",
@@ -303,6 +313,7 @@ router.post(
           $7,
           $8,
           $9,
+          $15,
           $10,
           $11,
           $12,
@@ -319,6 +330,7 @@ router.post(
           mood,
           accent,
           price,
+          preview_image_url,
           preview_seed,
           creator_name,
           "shortDescription",
@@ -341,6 +353,7 @@ router.post(
           values.shortDescription,
           values.description,
           values.isEnabled ? 1 : 0,
+          values.previewImageUrl || null,
         ]
       );
 
@@ -417,6 +430,7 @@ router.put(
               mood,
               accent,
               price,
+              preview_image_url,
               preview_seed,
               creator_name,
               "shortDescription",
@@ -491,6 +505,15 @@ router.put(
         });
       }
 
+      if (values.previewImageUrl !== undefined && values.previewImageUrl !== "") {
+        try {
+          const url = new URL(values.previewImageUrl);
+          if (typeof values.previewImageUrl !== "string" || url.protocol !== "https:" || url.username || url.password) throw new Error();
+        } catch {
+          return res.status(400).json({ error: "Enter a public HTTPS image URL." });
+        }
+      }
+
       if (!values.previewSeed) {
         return res.status(400).json({
           error:
@@ -511,6 +534,7 @@ router.put(
             mood = $6,
             accent = $7,
             price = $8,
+            preview_image_url = COALESCE($15, preview_image_url),
             preview_seed = $9,
             creator_name = $10,
             "shortDescription" = $11,
@@ -527,6 +551,7 @@ router.put(
             mood,
             accent,
             price,
+            preview_image_url,
             preview_seed,
             creator_name,
             "shortDescription",
@@ -549,6 +574,7 @@ router.put(
             values.description,
             values.isEnabled ? 1 : 0,
             templateId,
+            values.previewImageUrl ?? null,
           ]
         );
 
@@ -622,6 +648,7 @@ router.delete(
             mood,
             accent,
             price,
+            preview_image_url,
             preview_seed,
             creator_name,
             "shortDescription",
@@ -693,6 +720,7 @@ router.get(
           mood,
           accent,
           price,
+          preview_image_url,
           preview_seed,
           creator_name,
           "shortDescription",

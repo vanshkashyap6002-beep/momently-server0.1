@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS templates (
         accent IN ('birthday','anniversary','proposal','wedding')
     ),
     price INTEGER NOT NULL DEFAULT 0,
+    preview_image_url TEXT,
     preview_seed TEXT NOT NULL,
     creator_name TEXT NOT NULL DEFAULT 'Momently',
     is_enabled INTEGER NOT NULL DEFAULT 1,
